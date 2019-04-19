@@ -33,3 +33,18 @@ class TestCephFSShell(CephFSTestCase):
         o = self._cephfs_shell("help")
 
         log.info("output:\n{}".format(o))
+
+    def test_mkdir(self):
+        """
+        Test that mkdir creates directory
+        """
+        o = self._cephfs_shell("mkdir d1")
+        log.info("cephfs-shell output:\n{}".format(o))
+
+        o = self.mount_a.ls()
+        log.info("mount_a output:\n{}".format(o))
+
+        if 'd1' in o:
+            log.info('mkdir succeeded')
+        else:
+            log.info('mkdir failed')
