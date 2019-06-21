@@ -128,9 +128,12 @@ def glob(dir_name, pattern):
         parent_dir = '/'
     if dir_name == '/' or is_dir_exists(os.path.basename(dir_name),
                                         parent_dir):
-        for i in list_items(dir_name)[2:]:
-            if fnmatch.fnmatch(i.d_name, pattern):
-                paths.append(os.path.join(dir_name, i.d_name))
+        for i in list_items(dir_name):
+            d = i.d_name.decode('utf-8')
+            if d == '.' or d == '..':
+                continue
+            if fnmatch.fnmatch(d, pattern):
+                paths.append(os.path.join(dir_name, d))
     return paths
 
 
@@ -157,8 +160,13 @@ def get_all_possible_paths(pattern):
     for pattern in patterns:
         for path in paths:
             paths.extend(glob(path, pattern))
-    return [path for path in paths if fnmatch.fnmatch(path,
-            os.path.join(cephfs.getcwd().decode('utf-8'), complete_pattern))]
+    pat = ""
+    if is_rel_path:
+        parent_dir = cephfs.getcwd().decode('utf-8') if is_rel_path else ""
+        pat = os.path.join(parent_dir, complete_pattern)
+    else:
+        pat = complete_pattern
+    return [path for path in paths if fnmatch.fnmatch(path, pat)]
 
 
 suffixes = ['B', 'K', 'M', 'G', 'T', 'P']
@@ -793,6 +801,9 @@ sub-directories, files')
 
     @with_argparser(rmdir_parser)
     def do_rmdir(self, args):
+        self.do_rmdir_helper(args)
+
+    def do_rmdir_helper(self, args):
         """
         Remove a specific Directory
         """
@@ -834,7 +845,7 @@ sub-directories, files')
                 try:
                     cephfs.rmdir(to_bytes(dir_path))
                 except libcephfs.Error:
-                    self.poutput('error: no such directory "%s"' % dir_path)
+                    self.poutput('error: no such directory, or directory not empty "%s"' % dir_path)
 
     def complete_rm(self, text, line, begidx, endidx):
         """
@@ -1205,6 +1216,42 @@ sub-directories, files')
             except libcephfs.Error:
                 self.poutput('max_files is not set')
                 pass
+
+    snap_parser = argparse.ArgumentParser(description='Snapshot Management')
+    snap_parser.add_argument('op', type=str, help='Snapshot operation.',
+                             choices=['create', 'delete'], nargs='?',
+                             default=None)
+    snap_parser.add_argument('name', type=str, help='Name of snapshot')
+    snap_parser.add_argument('dir', type=str,
+                             help='Directory for which snapshot '
+                                  'needs to be created or deleted')
+
+    @with_argparser(snap_parser)
+    def do_snap(self, args):
+        """
+        Snapshot management for the volume
+        """
+        snapdir = (cephfs.conf_get('client_snapdir') if cephfs.conf_get('client_snapdir') is not None else '.snap')
+        if args.op == 'create':
+            try:
+                if is_dir_exists(args.dir):
+                    cephfs.mkdir(os.path.join(args.dir, snapdir, args.name), 0o755)
+                else:
+                    self.poutput("error: no such directory '%s'" % args.dir)
+            except libcephfs.Error:
+                self.poutput("error: snapshot '%s' already exists" % args.name)
+        elif args.op == 'delete':
+            snap_dir = os.path.join(args.dir, snapdir, args.name)
+            try:
+                if is_dir_exists(snap_dir):
+                    newargs = argparse.Namespace(dir_paths=[snap_dir], parent=False)
+                    self.do_rmdir_helper(newargs)
+                else:
+                    self.poutput("error: no such snapshot '%s'" % args.name)
+            except libcephfs.Error:
+                self.poutput("error while deleting '%s'" % snap_dir)
+        else:
+            self.poutput("error: snapshot can only be created or deleted")
 
     def do_help(self, line):
         """
