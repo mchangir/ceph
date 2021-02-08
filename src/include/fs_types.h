@@ -6,6 +6,38 @@
 #include "types.h"
 class JSONObj;
 
+#define CEPHFS_EBLOCKLISTED    EBLOCKLISTED
+#define CEPHFS_EPERM           EPERM
+#define CEPHFS_ESTALE          ESTALE
+#define CEPHFS_ENOSPC          ENOSPC
+#define CEPHFS_ETIMEDOUT       ETIMEDOUT
+#define CEPHFS_EIO             EIO
+#define CEPHFS_ENOTCONN        ENOTCONN
+#define CEPHFS_EEXIST          EEXIST
+#define CEPHFS_EINTR           EINTR
+#define CEPHFS_EINVAL          EINVAL
+#define CEPHFS_EBADF           EBADF
+#define CEPHFS_EROFS           EROFS
+#define CEPHFS_EAGAIN          EAGAIN
+#define CEPHFS_EACCES          EACCES
+#define CEPHFS_ELOOP           ELOOP
+#define CEPHFS_EISDIR          EISDIR
+#define CEPHFS_ENOENT          ENOENT
+#define CEPHFS_ENOTDIR         ENOTDIR
+#define CEPHFS_ENAMETOOLONG    ENAMETOOLONG
+#define CEPHFS_EBUSY           EBUSY
+#define CEPHFS_EINVAL          EINVAL
+#define CEPHFS_EDQUOT          EDQUOT
+#define CEPHFS_EFBIG           EFBIG
+#define CEPHFS_ERANGE          ERANGE
+#define CEPHFS_ENXIO           ENXIO
+#define CEPHFS_ECANCELED       ECANCELED
+#define CEPHFS_ENODATA         ENODATA
+#define CEPHFS_EOPNOTSUPP      EOPNOTSUPP
+#define CEPHFS_EXDEV           EXDEV
+#define CEPHFS_ENOMEM          ENOMEM
+#define CEPHFS_ENOTRECOVERABLE ENOTRECOVERABLE
+
 // --------------------------------------
 // ino
 
