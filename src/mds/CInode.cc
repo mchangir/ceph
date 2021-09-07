@@ -4467,6 +4467,7 @@ void CInode::decode_import(bufferlist::const_iterator& p,
 void InodeStoreBase::dump(Formatter *f) const
 {
   inode->dump(f);
+
   f->dump_string("symlink", symlink);
 
   f->open_array_section("xattrs");
@@ -5007,6 +5008,13 @@ void CInode::dump(Formatter *f, int flags) const
   if (flags & DUMP_INODE_STORE_BASE)
     InodeStoreBase::dump(f);
   
+  {
+    inode_backtrace_t bt;
+    const int64_t pool = get_backtrace_pool();
+    const_cast<CInode*>(this)->build_backtrace(pool, bt);
+    f->dump_stream("backtrace") << bt;
+  }
+
   if (flags & DUMP_MDS_CACHE_OBJECT)
     MDSCacheObject::dump(f);
 
