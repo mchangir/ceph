@@ -1,0 +1,174 @@
+overrides:
+  ceph:
+    log-ignorelist:
+    - failed to encode map
+    - overall HEALTH_
+    - \(FS_
+    - \(MDS_
+    - \(OSD_
+    - \(MON_DOWN\)
+    - \(CACHE_POOL_
+    - \(POOL_
+    - \(MGR_DOWN\)
+    - \(PG_
+    - \(SMALLER_PGP_NUM\)
+    - Monitor daemon marked osd
+    - Behind on trimming
+    - Manager daemon
+    - Not found or unloadable
+    - evicting unresponsive client
+    - reporting legacy \(not per-pool\) BlueStore omap usage stats
+    conf:
+      mon:
+        mon warn on legacy crush tunables: false
+      mds:
+        mds_max_snaps_per_dir: 4096
+roles:
+- - mon.a
+  - mgr.x
+  - mds.a
+  - osd.0
+  - osd.1
+  - osd.2
+- - client.0
+install-upgrade-tasks:
+  sequential:
+    - mds_pre_upgrade:
+    - print: "**** done mds pre-upgrade sequence"
+    - install.upgrade:
+        mon.a:
+          branch: pacific
+        mds.a:
+          branch: pacific
+        mgr.x:
+          branch: pacific
+        osd.0:
+          branch: pacific
+        osd.1:
+          branch: pacific
+        osd.2:
+          branch: pacific
+tasks:
+- install:
+    branch: nautilus
+    exclude_packages:
+      - ceph-mgr-cephadm
+      - cephadm
+      - libcephfs-dev
+    # For kernel_untar_build workunit                                         
+    extra_system_packages:                                                    
+      deb:                                                                    
+        - bison                                                                 
+        - flex                                                                  
+        - libelf-dev                                                            
+        - libssl-dev                                                            
+        - network-manager                                                       
+        - iproute2                                                              
+        - util-linux                                                            
+        # for xfstests-dev                                                      
+        - dump                                                                  
+        - indent                                                                
+        # for fsx                                                               
+        - libaio-dev                                                            
+        - libtool-bin                                                           
+        - uuid-dev                                                              
+        - xfslibs-dev                                                           
+      rpm:                                                                    
+        - bison                                                                 
+        - flex                                                                  
+        - elfutils-libelf-devel                                                 
+        - openssl-devel                                                         
+        - NetworkManager                                                        
+        - iproute                                                               
+        - util-linux                                                            
+        # for xfstests-dev                                                      
+        - libacl-devel                                                          
+        - libaio-devel                                                          
+        - libattr-devel                                                         
+        - libtool                                                               
+        - libuuid-devel                                                         
+        - xfsdump                                                               
+        - xfsprogs                                                              
+        - xfsprogs-devel                                                        
+        # for fsx                                                               
+        - libaio-devel                                                          
+        - libtool                                                               
+        - libuuid-devel                                                         
+        - xfsprogs-devel                                                        
+- exec:
+    mon.a:
+      - "mkdir -p /var/log/ceph"
+- print: "**** done installing nautilus"
+- print: "**** starting ceph daemons"
+- ceph:
+    create_rbd_pool: false
+    mon.a:
+- exec:
+    mon.a:
+      - "pgrep -a ceph"
+- print: "**** done starting ceph daemons"
+- print: "**** starting ceph-fuse"
+- ceph-fuse:
+    client.0:
+- exec:
+    client.0:
+      - "pgrep -a ceph"
+- print: "**** done starting ceph-fuse"
+- parallel:
+  - workunit:
+      clients:
+        client.0: [kernel_untar_build.sh]
+#  - install-upgrade-tasks
+  - exec:
+      mon.a:
+        - "for ((i = 0; i < 15; i++)); do ceph --cluster ceph -s --format=json; sleep 60; done"
+  - exec:
+      client.0:
+        - "for ((i = 1; i <= 1260; i++)); do mkdir /home/ubuntu/cephtest/mnt.0/.snap/snap${i}; sleep 5; done"
+- exec:
+    mon.a:
+      - "pgrep -a ceph"
+    client.0:
+      - "for ((i = 1; i <= 1260; i++)); do rmdir /home/ubuntu/cephtest/mnt.0/.snap/snap${i}; done"
+#- exec:
+#    mon.a:
+#      - "pgrep -a ceph"
+#      - install-upgrade-tasks
+- print: "**** about to restart  osd.0, osd.1 and osd.2"
+- ceph.restart:
+    daemons: [osd.0, osd.1, osd.2]
+    wait-for-healthy: false
+    wait-for-osds-up: true
+- exec:
+    mon.a:
+      - ceph osd require-osd-release pacific
+- print: "**** osds seem healthy"
+- print: "**** about to restart mon and mgr"
+- ceph.restart:
+    daemons: [mon.a, mgr.x]
+- ceph.healthy:
+- print: "**** mon and mgr seem healthy"
+- print: "**** about to restart  mds"
+- ceph.restart:
+    daemons: [mds.a]
+    wait-for-healthy: false
+    wait-for-osds-up: true
+- print: "**** restarted mds"
+- print: "**** we have a healthy system!"
+- parallel:
+  - workunit:
+      clients:
+        client.0: [kernel_untar_build.sh]
+  - exec:
+      mon.a:
+        - "for ((i = 0; i < 15; i++)); do ceph --cluster ceph -s --format=json; sleep 60; done"
+  - exec:
+      client.0:
+        - "for ((i = 1; i <= 1260; i++)); do mkdir /home/ubuntu/cephtest/mnt.0/.snap/snap${i}; sleep 5; done"
+- exec:
+    mon.a:
+      - "pgrep -a ceph"
+    client.0:
+      - "for ((i = 1; i <= 1260; i++)); do rmdir /home/ubuntu/cephtest/mnt.0/.snap/snap${i}; done"
+- sleep:
+    duration: 120
