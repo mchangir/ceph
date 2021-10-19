@@ -1,0 +1,279 @@
+---
+overrides:
+  ceph:
+    fs: xfs
+    log-ignorelist:
+      - failed to encode map
+      - overall HEALTH_
+      - \(FS_
+      - \(MDS_
+      - \(OSD_
+      - \(MON_DOWN\)
+      - \(CACHE_POOL_
+      - \(POOL_
+      - \(MGR_DOWN\)
+      - \(PG_
+      - \(SMALLER_PGP_NUM\)
+      - Monitor daemon marked osd
+      - Behind on trimming
+      - Manager daemon
+      - Not found or unloadable
+      - evicting unresponsive client
+      - reporting legacy \(not per-pool\) BlueStore omap usage stats
+    conf:
+      global:
+        bluestore warn on legacy statfs: false
+        bluestore warn on no per pool omap: false
+        mon pg warn min per osd: 0
+        mon warn on pool no app: false
+        ms bind msgr2: false
+      mon:
+        mon warn on legacy crush tunables: false
+        mon op complaint time: 180
+        mon warn on osd down out interval zero: false
+      mds:
+        mds_max_snaps_per_dir: 4096
+        mds bal frag: true
+        mds bal fragment size max: 10000
+        mds bal merge size: 5
+        mds bal split bits: 3
+        mds bal split size: 100
+        mds op complaint time: 180
+        mds verify scatter: true
+        osd op complaint time: 180
+        rados mon op timeout: 900
+        rados osd op timeout: 900
+      osd:
+        bdev async discard: true
+        bdev enable discard: true
+        bluestore allocator: bitmap
+        bluestore block size: 96636764160
+        bluestore fsck on mount: true
+        mon osd backfillfull_ratio: 0.85
+        mon osd full ratio: 0.9
+        mon osd nearfull ratio: 0.8
+        osd failsafe full ratio: 0.95
+        osd objectstore: bluestore
+        osd op complaint time: 180
+      client:
+        rados mon op timeout: 15m
+        rados osd op timeout: 15m
+        client mount timeout: 600
+        admin socket: /var/run/ceph/$cluster-$name.$pid.asok
+        pid file: /var/run/ceph/$cluster-$name.pid
+  ceph-deploy:
+    bluestore: true
+    conf:
+      client:
+        log file: /var/log/ceph/ceph-$name.$pid.log
+      mon:
+        osd default pool size: 2
+      osd:
+        bdev async discard: true
+        bdev enable discard: true
+        bluestore block size: 96636764160
+        bluestore fsck on mount: true
+        mon osd backfillfull_ratio: 0.85
+        mon osd full ratio: 0.9
+        mon osd nearfull ratio: 0.8
+        osd failsafe full ratio: 0.95
+        osd objectstore: bluestore
+    fs: xfs
+  selinux:
+    whitelist:
+      - scontext=system_u:system_r:logrotate_t:s0
+roles:
+  - - mon.a
+    - mon.b
+    - mon.c
+    - mgr.x
+    - mgr.y
+    - mds.a
+    - mds.b
+    - mds.c
+    - osd.0
+    - osd.1
+    - osd.2
+    - osd.3
+  - - client.0
+  - - client.1
+install-upgrade-tasks:
+  sequential:
+    - mds_pre_upgrade:
+    - print: "**** done mds pre-upgrade sequence"
+    - install.upgrade:
+        mon.a:
+          branch: pacific
+        client.0:
+          branch: pacific
+tasks:
+  - exec:
+      mon.a:
+        - mkdir -p /var/log/ceph
+  - install:
+      branch: nautilus
+      exclude_packages:
+        - libcephfs-dev
+        - librados3
+        - ceph-mgr-dashboard
+        - ceph-mgr-diskprediction-local
+        - ceph-mgr-rook
+        - ceph-mgr-cephadm
+        - cephadm
+        - ceph-immutable-object-cache
+        - python3-rados
+        - python3-rgw
+        - python3-rbd
+        - python3-cephfs
+      extra_packages:
+        - librados2
+      # For kernel_untar_build workunit
+      extra_system_packages:
+        deb:
+          - bison
+          - flex
+          - libelf-dev
+          - libssl-dev
+          - network-manager
+          - iproute2
+          - util-linux
+          # for xfstests-dev
+          - dump
+          - indent
+          # for fsx
+          - libaio-dev
+          - libtool-bin
+          - uuid-dev
+          - xfslibs-dev
+        rpm:
+          - bison
+          - flex
+          - elfutils-libelf-devel
+          - openssl-devel
+          - NetworkManager
+          - iproute
+          - util-linux
+          # for xfstests-dev
+          - libacl-devel
+          - libaio-devel
+          - libattr-devel
+          - libtool
+          - libuuid-devel
+          - xfsdump
+          - xfsprogs
+          - xfsprogs-devel
+          # for fsx
+          - libaio-devel
+          - libtool
+          - libuuid-devel
+          - xfsprogs-devel
+  - print: "**** done installing nautilus"
+  - print: "**** starting ceph daemons"
+  - ceph:
+      create_rbd_pool: false
+      mon.a:
+  - exec:
+      mon.a:
+        - pgrep -a ceph
+  - print: "**** done starting ceph daemons"
+  - print: "**** starting ceph-fuse"
+  - ceph-fuse:
+      client.0:
+  - exec:
+      client.0:
+        - pgrep -a ceph
+  - print: "**** done starting ceph-fuse"
+  - parallel:
+      - workunit:
+          clients:
+            client.0: [kernel_untar_build.sh]
+      #  - install-upgrade-tasks
+      - exec:
+          mon.a:
+            - >-
+              for ((i = 0; i < 15; i++)); do
+              ceph --cluster ceph -s --format=json; sleep 60; done
+      - exec:
+          client.0:
+            - >-
+              for ((i = 1; i <= 1260; i++)); do
+              mkdir /home/ubuntu/cephtest/mnt.0/.snap/snap${i}; sleep 5; done
+  - exec:
+      mon.a:
+        - pgrep -a ceph
+      client.0:
+        - >-
+          for ((i = 1; i <= 1260; i++)); do
+          rmdir /home/ubuntu/cephtest/mnt.0/.snap/snap${i}; done
+        - sleep 120
+  - exec:
+      mon.a:
+        - pgrep -a ceph
+  - parallel:
+      - install-upgrade-tasks
+  - sleep:
+      duration: 120
+  - ceph.stop:
+      daemons:
+        - mds.a
+        - mds.b
+        - mds.c
+        - osd.0
+        - osd.1
+        - osd.2
+        - osd.3
+        - mgr.x
+        - mgr.y
+        - mon.a
+        - mon.b
+        - mon.c
+  - ceph-fuse:
+      # unmount client after upgrade to pacific
+      client.0:
+        mounted: false
+  - print: "**** client.0 unmounted"
+  - sleep:
+      duration: 60
+  - print: "**** restarting ceph daemons"
+  - ceph.restart:
+      daemons:
+        - mon.*
+        - mgr.*
+        - osd.*
+        - mds.*
+      wait-for-healthy: true
+      wait-for-osds-up: true
+  - print: "**** ceph daemons restarted"
+  - sleep:
+      duration: 600
+  - ceph.healthy:
+  - print: "**** we have a healthy system!"
+  - exec:
+      mon.a:
+        - ceph osd require-osd-release pacific --yes_i_really_mean_it
+  - ceph-fuse:
+      # remount client after upgrade to pacific
+      client.0:
+  - parallel:
+      - workunit:
+          clients:
+            client.0: [kernel_untar_build.sh]
+      - exec:
+          mon.a:
+            - >-
+              for ((i = 0; i < 15; i++)); do ceph --cluster ceph -s
+              --format=json; sleep 60; done
+      - exec:
+          client.0:
+            - >-
+              for ((i = 1; i <= 1260; i++)); do
+              mkdir /home/ubuntu/cephtest/mnt.0/.snap/snap${i}; sleep 5; done
+  - exec:
+      mon.a:
+        - pgrep -a ceph
+      client.0:
+        - >-
+          for ((i = 1; i <= 1260; i++)); do
+          rmdir /home/ubuntu/cephtest/mnt.0/.snap/snap${i}; done
+  - sleep:
+      duration: 120
