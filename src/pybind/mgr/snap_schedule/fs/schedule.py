@@ -12,6 +12,9 @@ from typing import cast, Any, Dict, List, Tuple, Optional, Union
 
 log = logging.getLogger(__name__)
 
+RETENTION_MULTIPLIERS = ['n', 'M', 'h', 'd', 'w', 'm', 'y']
+
+TableRowT = Dict[str, Union[int, str]]
 # Work around missing datetime.fromisoformat for < python3.7
 SNAP_DB_TS_FORMAT = '%Y-%m-%dT%H:%M:%S'
 try:
@@ -57,17 +60,16 @@ def parse_retention(retention: str) -> Dict[str, int]:
     log.debug(f'parse_retention({retention})')
     matches = re.findall(r'\d+[a-z]', retention)
     for m in matches:
-        ret[m[-1]] = int(m[0:-1])
+        if m[-1] in RETENTION_MULTIPLIERS:
+            ret[m[-1]] = int(m[0:-1])
     matches = re.findall(r'\d+[A-Z]', retention)
     for m in matches:
-        ret[m[-1]] = int(m[0:-1])
+        if m[-1] in RETENTION_MULTIPLIERS:
+            ret[m[-1]] = int(m[0:-1])
     log.debug(f'parse_retention({retention}) -> {ret}')
     return ret
 
 
-RETENTION_MULTIPLIERS = ['n', 'M', 'h', 'd', 'w', 'm', 'y']
-
-TableRowT = Dict[str, Union[int, str]]
 
 
 def dump_retention(retention: Dict[str, str]) -> str:
@@ -340,7 +342,7 @@ class Schedule(object):
             if not row:
                 raise ValueError(f'No schedule found for {path}')
             retention = parse_retention(retention_spec)
-            if not retention:
+            if len(retention) == 0:
                 raise ValueError(f'Retention spec {retention_spec} is invalid')
             log.debug(f'db result is {tuple(row)}')
             current = row['retention']
@@ -386,19 +388,30 @@ class Schedule(object):
     def parse_schedule(cls, schedule: str) -> Tuple[int, str]:
         return int(schedule[0:-1]), schedule[-1]
 
+    @classmethod
+    def period_multiplier(mult: str) -> int:
+        if mult == 'n':
+            return 1
+        elif mult == 'M':
+            return 60
+        elif mult == 'h':
+            return 60 * 60
+        elif mult == 'd':
+            return 60 * 60 * 24
+        elif mult == 'w':
+            return 60 * 60 * 24 * 7
+        elif mult == 'm':
+            return 60 * 60 * 24 * 7 * 4  # four weeks in a month
+        elif mult == 'y':
+            return 60 * 60 * 24 * 7 * 4 * 13  # 52 weeks in a year: 13 x 4
+        else:
+            raise ValueError(f'schedule multiplier "{mult}" not recognized')
+            return 0
+
     @property
     def repeat(self) -> int:
         period, mult = self.parse_schedule(self.schedule)
-        if mult == 'M':
-            return period * 60
-        elif mult == 'h':
-            return period * 60 * 60
-        elif mult == 'd':
-            return period * 60 * 60 * 24
-        elif mult == 'w':
-            return period * 60 * 60 * 24 * 7
-        else:
-            raise ValueError(f'schedule multiplier "{mult}" not recognized')
+        return period * Schedule.period_multiplier(mult)
 
     UPDATE_LAST = '''UPDATE schedules_meta
     SET

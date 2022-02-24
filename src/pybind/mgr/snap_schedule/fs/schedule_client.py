@@ -8,7 +8,7 @@ import rados
 from contextlib import contextmanager
 from mgr_util import CephfsClient, open_filesystem
 from collections import OrderedDict
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import logging
 from threading import Timer, Lock
 from typing import cast, Any, Callable, Dict, Iterator, List, Set, Optional, \
@@ -64,6 +64,10 @@ def updates_schedule_db(func: FuncT) -> FuncT:
         return ret
     return cast(FuncT, f)
 
+def is_timedelta_acceptable_for_retention(delta: timedelta,
+                                          period: str,
+                                          period_count: int) -> bool:
+    return delta.total_seconds() <= Schedule.period_multiplier(period) * period_count
 
 def get_prune_set(candidates: Set[Tuple[cephfs.DirEntry, datetime]],
                   retention: Dict[str, int]) -> Set:
@@ -80,6 +84,7 @@ def get_prune_set(candidates: Set[Tuple[cephfs.DirEntry, datetime]],
         ("y", '%Y'),
     ])
     keep = []
+    now = datetime.now()
     if not retention:
         log.info(f'no retention set, assuming n: {MAX_SNAPS_PER_PATH}')
         retention = {'n': MAX_SNAPS_PER_PATH}
@@ -93,17 +98,28 @@ def get_prune_set(candidates: Set[Tuple[cephfs.DirEntry, datetime]],
         for snap in sorted(candidates, key=lambda x: x[0].d_name,
                            reverse=True):
             snap_ts = snap[1].strftime(date_pattern)
+            snap_datetime = snap[1]
+            delta = now - snap_datetime
             if snap_ts != last:
                 last = snap_ts
                 if snap not in keep:
-                    log.debug((f'keeping {snap[0].d_name} due to '
-                               f'{period_count}{period}'))
-                    keep.append(snap)
-                    kept_for_this_period += 1
-                    if kept_for_this_period == period_count:
-                        log.debug(('found enough snapshots for '
+                    if period == 'n':
+                        log.debug((f'keeping {snap[0].d_name} due to '
+                                   f'{period_count}{period}'))
+                        keep.append(snap)
+                        kept_for_this_period += 1
+                    elif is_timedelta_acceptable_for_retention(delta,
+                                                               period,
+                                                               period_count):
+                        log.debug((f'keeping {snap[0].d_name} due to '
+                                   f'{period_count}{period}'))
+                        keep.append(snap)
+                    else:
+                        log.debug((f'found enough ({len(keep)}) snapshots for '
                                    f'{period_count}{period}'))
                         break
+                if period == 'n' and kept_for_this_period == period_count:
+                    break
     if len(keep) > MAX_SNAPS_PER_PATH:
         log.info((f'Would keep more then {MAX_SNAPS_PER_PATH}, '
                   'pruning keep set'))
