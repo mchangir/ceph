@@ -13004,6 +13004,7 @@ class C_MDC_DataUninlinedSubmitted : public MDCacheLogContext {
       dout(20) << "(uninline_data) log submission succeeded for " << *in << dendl;
       in->mdcache->logger->inc(l_mdc_uninline_succeeded);
     }
+    in->scrub_info()->header->record_uninline_status(in->get_inode()->ino, r);
 
     mdr->apply();
     mds->server->respond_to_request(mdr, r);
@@ -13029,6 +13030,7 @@ struct C_IO_DataUninlined : public MDSIOContext {
       derr << "(uninline_data) mutation failed: r=" << r
 	   << " (" << cpp_strerror(r) << ") for " << *in << dendl;
       in->mdcache->logger->inc(l_mdc_uninline_write_failed);
+      in->scrub_info()->header->record_uninline_status(in->get_inode()->ino, r);
       mds->server->respond_to_request(mdr, r);
       return;
     }

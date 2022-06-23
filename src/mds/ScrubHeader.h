@@ -63,6 +63,21 @@ public:
   }
   unsigned get_num_pending() const { return num_pending; }
 
+  void record_uninline_status(_inodeno_t ino, int e) {
+    std::scoped_lock lock{uninline_failed_info_lock};
+    if (uninline_failed_info.find(e) == uninline_failed_info.end()) {
+      uninline_failed_info[e] = std::vector<_inodeno_t>();
+    }
+    auto& v = uninline_failed_info.at(e);
+    v.push_back(ino);
+  }
+
+  std::unordered_map<int, std::vector<_inodeno_t>> get_uninline_info() {
+    std::scoped_lock lock{uninline_failed_info_lock};
+    auto ufi = uninline_failed_info;
+    return ufi;
+  }
+
 protected:
   const std::string tag;
   bool is_tag_internal;
@@ -74,6 +89,9 @@ protected:
   bool repaired = false;  // May be set during scrub if repairs happened
   unsigned epoch_last_forwarded = 0;
   unsigned num_pending = 0;
+  // errno -> [ino1, ino2, ino3, ...]
+  ceph::mutex uninline_failed_info_lock = ceph::make_mutex("ScrubHeader::uninline_failed_info_lock");
+  std::unordered_map<int, std::vector<_inodeno_t>> uninline_failed_info;
 };
 
 typedef std::shared_ptr<ScrubHeader> ScrubHeaderRef;
