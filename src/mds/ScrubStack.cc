@@ -658,7 +658,9 @@ void ScrubStack::scrub_status(Formatter *f) {
     }
 
     f->dump_string("options", optcss->strv());
+    f->close_section(); // scrub id
   }
+  f->close_section(); // scrubs
 
   // dump uninline failures per rank
   f->open_object_section("uninline_failures");
@@ -670,7 +672,7 @@ void ScrubStack::scrub_status(Formatter *f) {
       for (auto& [error_code, ino_vec] : ec_inovec_map) {
         f->open_array_section(cpp_strerror(error_code));
         for (auto ino : ino_vec) {
-          f->dump_int(cpp_strerror(error_code), ino);
+          f->dump_unsigned("ino", ino);
         }
         f->close_section(); // error_code
       }
@@ -680,7 +682,6 @@ void ScrubStack::scrub_status(Formatter *f) {
   }
   f->close_section(); // uninline failures
 
-  f->close_section(); // scrubs
   f->close_section(); // result
 }
 
@@ -1018,7 +1019,7 @@ void ScrubStack::handle_scrub_stats(const cref_t<MMDSScrubStats> &m)
 	any_finished = true;
 	if (header->get_repaired())
 	  any_repaired = true;
-	uninline_failed_meta_info[it->first] = std::move(header->get_uninline_info());
+	uninline_failed_meta_info[it->first] = header->get_uninline_failed_info();
 	scrubbing_map.erase(it++);
       } else {
 	++it;
@@ -1044,6 +1045,7 @@ void ScrubStack::handle_scrub_stats(const cref_t<MMDSScrubStats> &m)
       stat.epoch_acked = m->get_epoch();
       stat.scrubbing_tags = m->get_scrubbing_tags();
       stat.aborting = m->is_aborting();
+
       stat.uninline_failed_meta_info = std::move(m->get_uninline_failed_meta_info());
     }
   }
@@ -1112,6 +1114,8 @@ void ScrubStack::advance_scrub_status()
       any_finished = true;
       if (header->get_repaired())
 	any_repaired = true;
+      auto& ufmi = mds_scrub_stats[0].uninline_failed_meta_info;
+      ufmi[it->first] = header->get_uninline_failed_info();
       scrubbing_map.erase(it++);
     } else {
       ++it;

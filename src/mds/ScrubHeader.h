@@ -21,12 +21,14 @@
 #include <string_view>
 
 #include "include/ceph_assert.h"
+#include "common/fair_mutex.h"
 
 namespace ceph {
 class Formatter;
 };
 
 class CInode;
+class MDCache;
 
 /**
  * Externally input parameters for a scrub, associated with the root
@@ -37,7 +39,7 @@ public:
   ScrubHeader(std::string_view tag_, bool is_tag_internal_, bool force_,
               bool recursive_, bool repair_)
     : tag(tag_), is_tag_internal(is_tag_internal_), force(force_),
-      recursive(recursive_), repair(repair_) {}
+      recursive(recursive_), repair(repair_), ufi_mutex("ScrubHeader::ufi_mutex") {}
 
   // Set after construction because it won't be known until we've
   // started resolving path and locking
@@ -64,7 +66,7 @@ public:
   unsigned get_num_pending() const { return num_pending; }
 
   void record_uninline_status(_inodeno_t ino, int e) {
-    std::scoped_lock lock{uninline_failed_info_lock};
+    std::scoped_lock ufi_lock(ufi_mutex);
     if (uninline_failed_info.find(e) == uninline_failed_info.end()) {
       uninline_failed_info[e] = std::vector<_inodeno_t>();
     }
@@ -72,8 +74,8 @@ public:
     v.push_back(ino);
   }
 
-  std::unordered_map<int, std::vector<_inodeno_t>> get_uninline_info() {
-    std::scoped_lock lock{uninline_failed_info_lock};
+  std::unordered_map<int, std::vector<_inodeno_t>> get_uninline_failed_info() {
+    std::scoped_lock ufi_lock(ufi_mutex);
     auto ufi = uninline_failed_info;
     return ufi;
   }
@@ -89,8 +91,9 @@ protected:
   bool repaired = false;  // May be set during scrub if repairs happened
   unsigned epoch_last_forwarded = 0;
   unsigned num_pending = 0;
+  // uninline failed info mutex
+  ceph::fair_mutex ufi_mutex;
   // errno -> [ino1, ino2, ino3, ...]
-  ceph::mutex uninline_failed_info_lock = ceph::make_mutex("ScrubHeader::uninline_failed_info_lock");
   std::unordered_map<int, std::vector<_inodeno_t>> uninline_failed_info;
 };
 
