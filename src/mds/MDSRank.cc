@@ -2765,6 +2765,19 @@ void MDSRankDispatcher::handle_asok_command(
     command_scrub_resume(f);
   } else if (command == "scrub status") {
     command_scrub_status(f);
+  } else if (command == "scrub clear_uninline_status") {
+    if (whoami != 0) {
+      *css << "Not rank 0";
+      r = -CEPHFS_EXDEV;
+      goto out;
+    }
+    std::string tag;
+    if(!cmd_getval(cmdmap, "tag", tag)) {
+      *css << "malformed srub tag; either specify 'all' or a specific tag";
+      r = -CEPHFS_EINVAL;
+    }
+    std::lock_guard l(mds_lock);
+    scrubstack->clear_uninline_status(tag);
   } else if (command == "tag path") {
     if (whoami != 0) {
       *css << "Not rank 0";
