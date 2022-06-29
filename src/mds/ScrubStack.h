@@ -102,6 +102,21 @@ public:
 
   void dispatch(const cref_t<Message> &m);
 
+  void clear_uninline_status(const std::string& tag) {
+    for (auto& stat : mds_scrub_stats) {
+      for (auto it = stat.uninline_failed_meta_info.begin();
+	   it != stat.uninline_failed_meta_info.end(); ) {
+	auto curr_it = it;
+	std::string old_tag;
+	std::tie(old_tag, std::ignore) = *curr_it;
+	++it;
+	if (tag == "all" || old_tag == tag) {
+	  stat.uninline_failed_meta_info.erase(curr_it);
+	}
+      }
+    }
+  }
+
   MDCache *mdcache;
 
 protected:
