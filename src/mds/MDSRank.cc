@@ -2778,6 +2778,7 @@ void MDSRankDispatcher::handle_asok_command(
     }
     std::lock_guard l(mds_lock);
     scrubstack->clear_uninline_status(tag);
+    mdcache->clear_uninline_counters();
   } else if (command == "tag path") {
     if (whoami != 0) {
       *css << "Not rank 0";

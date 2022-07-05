@@ -964,6 +964,12 @@ class MDCache {
 
   void uninline_data_work(MDRequestRef mdr);
 
+  void clear_uninline_counters() {
+    logger->set(l_mdc_uninline_started, 0);
+    logger->set(l_mdc_uninline_succeeded, 0);
+    logger->set(l_mdc_uninline_write_failed, 0);
+  }
+
   // my leader
   MDSRank *mds;
 
