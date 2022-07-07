@@ -71,6 +71,7 @@ int ScrubStack::_enqueue(MDSCacheObject *obj, ScrubHeaderRef& header, bool top)
 
     dout(10) << __func__ << " with {" << *in << "}" << ", top=" << top << dendl;
     in->scrub_initialize(header);
+    in->uninline_initialize();
   } else if (CDir *dir = dynamic_cast<CDir*>(obj)) {
     if (dir->scrub_is_in_progress()) {
       dout(10) << __func__ << " with {" << *dir << "}" << ", already in scrubbing" << dendl;
@@ -214,6 +215,7 @@ void ScrubStack::kick_off_scrubs()
 	if (done) {
 	  dout(20) << __func__ << " dir inode, done" << dendl;
 	  dequeue(in);
+	  in->uninline_finished();
 	}
 	if (added_children) {
 	  // dirfrags were queued at top of stack
@@ -971,6 +973,7 @@ void ScrubStack::handle_scrub(const cref_t<MMDSScrub> &m)
 	const auto& header = in->get_scrub_header();
 	header->set_epoch_last_forwarded(scrub_epoch);
 	in->scrub_finished();
+	in->uninline_finished();
 
 	kick_off_scrubs();
       }
