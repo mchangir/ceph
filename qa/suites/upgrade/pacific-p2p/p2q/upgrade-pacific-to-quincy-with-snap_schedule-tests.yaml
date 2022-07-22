@@ -1,0 +1,84 @@
+overrides:
+  ceph:
+    log-ignorelist:
+      - failed to encode map
+  conf:
+    mon:
+      mon warn on legacy crush tunables: false
+roles:
+  - - mon.a
+    - mgr.x
+    - mds.a
+    - osd.0
+    - osd.1
+    - osd.2
+    - client.0
+tasks:
+  - exec:
+      mds.a:
+        - "mkdir -p /var/log/ceph"
+  - install:
+      branch: pacific
+  - ceph:
+  - ceph-fuse:
+      client.0:
+        mounted: true
+  - exec:
+      client.0:
+        - "mkdir -p $TESTDIR/mnt.0/client.0/upgrade_snap_schedule_test_dir"
+      mon.a:
+        - "ceph mgr module enable snap_schedule"
+        - "sleep 2"
+        - "ceph config set mgr mgr/snap_schedule/allow_m_granularity True"
+        - "sleep 2"
+        - "ceph fs snap-schedule add
+           /client.0/upgrade_snap_schedule_test_dir 1M"
+        - "sleep 2"
+  - exec:
+      client.0:
+        - "sleep 360"
+  - workunit:
+      cleanup: false
+      clients:
+        client.0:
+          - suites/verify-snaps.sh client.0/upgrade_snap_schedule_test_dir 5
+  - ceph-fuse:
+      client.0:
+        mounted: false
+  # - ceph.stop:
+  - mds_pre_upgrade:
+  - install.upgrade:
+      mon.a:
+        branch: main
+  - ceph.restart:
+      daemons: [mon.*, mgr.*]
+      # stop_daemons: false
+      wait-for-healthy: false
+      # wait-for-osds-up: true
+  - ceph.healthy:
+  - ceph.restart:
+      daemons: [osd.*]
+      wait-for-healthy: false
+      wait-for-osds-up: true
+  - ceph.stop: [mds.*]
+  - ceph.restart:
+      daemons: [mds.*]
+      wait-for-healthy: false
+      wait-for-osds-up: true
+  - ceph.healthy:
+  - exec:
+      mon.a:
+        - "sleep 60"
+  # - ceph:
+  #     use_existing_cluster: true
+  - ceph-fuse:
+      client.0:
+        mounted: true
+  - exec:
+      client.0:
+        - "sleep 600"
+  - workunit:
+      cleanup: true
+      clients:
+        client.0:
+          - suites/verify-snaps.sh client.0/upgrade_snap_schedule_test_dir 15
