@@ -1,0 +1,108 @@
+overrides:
+  ceph:
+    log-ignorelist:
+      - failed to encode map
+  conf:
+    mon:
+      mon warn on legacy crush tunables: false
+roles:
+  - - mon.a
+    - mgr.x
+    - mds.a
+    - osd.0
+    - osd.1
+    - osd.2
+    - client.0
+tasks:
+  - exec:
+      mds.a:
+        - "mkdir -p /var/log/ceph"
+  - install:
+      branch: pacific
+  - ceph:
+  - ceph-fuse:
+      client.0:
+        mounted: true
+  - exec:
+      client.0:
+        - "mkdir -p $TESTDIR/mnt.0/client.0/upgrade_snap_schedule_test_dir"
+      mon.a:
+        - "ceph mgr module enable snap_schedule"
+        - "sleep 2"
+        - "ceph config set mgr mgr/snap_schedule/allow_m_granularity True"
+        - "sleep 2"
+        - "ceph fs snap-schedule add
+           /client.0/upgrade_snap_schedule_test_dir 1M"
+        - "sleep 2"
+  - exec:
+      client.0:
+        - "sleep 360"
+  - workunit:
+      cleanup: false
+      clients:
+        client.0:
+          - suites/verify-snaps.sh client.0/upgrade_snap_schedule_test_dir 5
+  - ceph-fuse:
+      client.0:
+        mounted: false
+  - mds_pre_upgrade:
+  - ceph.stop:
+  - install.upgrade:
+      mon.a:
+        branch: wip-mchangir-mgr-ensure-background_init-completion-before-starting-python-modules
+  # - exec:
+  #     mon.a:
+  #       - "echo ***** Sleeping for interactive debug session"
+  #       - "sleep 10800"
+  - ceph.restart:
+      daemons: [mon.*, mgr.*]
+      # stop_daemons: false
+      wait-for-healthy: false
+      # wait-for-osds-up: true
+  # - ceph.healthy:
+  - ceph.restart:
+      daemons: [osd.*]
+      wait-for-healthy: false
+      wait-for-osds-up: true
+  - ceph.stop: [mds.*]
+  - ceph.restart:
+      daemons: [mds.*]
+      wait-for-healthy: false
+      wait-for-osds-up: true
+  - exec:
+      mon.a:
+        - "ceph osd dump -f json-pretty"
+        - "ceph versions"
+        - "ceph osd require-osd-release quincy"
+        - "for f in `ceph osd pool ls` ; do ceph osd pool set $f pg_autoscale_mode off ; done"
+        - "sleep 60"
+  - ceph.healthy:
+  # - ceph:
+  #     use_existing_cluster: true
+  - ceph-fuse:
+      client.0:
+        mounted: true
+  - exec:
+      client.0:
+        - "sleep 600"
+  - workunit:
+      cleanup: false
+      clients:
+        client.0:
+          - suites/verify-snaps.sh client.0/upgrade_snap_schedule_test_dir 15
+  - exec:
+      mon.a:
+        - "ceph fs snap-schedule deactivate
+           /client.0/upgrade_snap_schedule_test_dir 1M"
+  - exec:
+      client.0:
+        - "find $TESTDIR/mnt.0/client.0/upgrade_snap_schedule_test_dir/.snap -maxdepth 1 -mindepth 1 -type d -exec rmdir {} ';'"
+  - workunit:
+      cleanup: true
+      clients:
+        client.0:
+          - true.sh
+  - ceph-fuse:
+      client.0:
+        mounted: false
+  - ceph.stop:
