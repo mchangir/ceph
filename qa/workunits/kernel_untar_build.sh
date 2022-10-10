@@ -2,6 +2,10 @@
 
 set -e
 
+# for kernel debugging
+# mount -t debugfs none /sys/kernel/debug
+# echo "file fs/ceph/* +pf" > /sys/kernel/debug/dynamic_debug/control
+
 wget -O linux.tar.gz http://download.ceph.com/qa/linux-5.4.tar.gz
 
 mkdir t
