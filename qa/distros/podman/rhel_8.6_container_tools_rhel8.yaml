@@ -1,5 +1,5 @@
-os_type: rhel
-os_version: "8.6"
+os_type: centos
+os_version: "8.stream"
 overrides:
   selinux:
     whitelist:
