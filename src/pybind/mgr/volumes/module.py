@@ -861,3 +861,7 @@ class Module(orchestrator.OrchestratorClientMixin, MgrModule):
         return self.vc.subvolume_getpath(vol_name=vol_name,
                                          sub_name=subvol,
                                          group_name=group_name)
+
+    # remote method
+    def subvolume_ls(self, vol_name, group_name):
+        return self.vc.list_subvolumes(vol_name=vol_name, group_name=group_name)
