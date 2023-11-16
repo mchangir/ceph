@@ -10,14 +10,17 @@ from datetime import datetime, timedelta
 
 log = logging.getLogger(__name__)
 
+
 def extract_schedule_and_retention_spec(spec=[]):
     schedule = set([s[0] for s in spec])
     retention = set([s[1] for s in spec])
     return (schedule, retention)
 
+
 def seconds_upto_next_schedule(time_from, timo):
     ts = int(time_from)
     return ((int(ts / 60) * 60) + timo) - ts
+
 
 class TestSnapSchedulesHelper(CephFSTestCase):
     CLIENTS_REQUIRED = 1
@@ -111,11 +114,13 @@ class TestSnapSchedulesHelper(CephFSTestCase):
 
     def add_snap_create_cbk(self, cbk):
         self.create_cbks.append(cbk)
+
     def remove_snap_create_cbk(self, cbk):
         self.create_cbks.remove(cbk)
 
     def add_snap_remove_cbk(self, cbk):
         self.remove_cbks.append(cbk)
+
     def remove_snap_remove_cbk(self, cbk):
         self.remove_cbks.remove(cbk)
 
@@ -170,7 +175,8 @@ class TestSnapSchedulesHelper(CephFSTestCase):
             self.assertTrue(schedule in json_res['schedule'])
         for retention in retentions:
             self.assertTrue(retention in json_res['retention'])
-    
+
+
 class TestSnapSchedules(TestSnapSchedulesHelper):
     def remove_snapshots(self, dir_path):
         snap_path = f'{dir_path}/.snap'
@@ -233,7 +239,7 @@ class TestSnapSchedules(TestSnapSchedulesHelper):
 
         timo, snap_sfx = self.calc_wait_time_and_snap_name(exec_time, '1m')
         log.debug(f'expecting snap {TestSnapSchedules.TEST_DIRECTORY}/.snap/scheduled-{snap_sfx} in ~{timo}s...')
-        to_wait = timo + 2 # some leeway to avoid false failures...
+        to_wait = timo + 2  # some leeway to avoid false failures...
 
         # verify snapshot schedule
         self.verify_schedule(TestSnapSchedules.TEST_DIRECTORY, ['1m'])
@@ -272,7 +278,7 @@ class TestSnapSchedules(TestSnapSchedulesHelper):
         log.debug(f'expecting snap {TestSnapSchedules.TEST_DIRECTORY}/.snap/scheduled-{snap_sfx_1} in ~{timo_1}s...')
         timo_2, snap_sfx_2 = self.calc_wait_time_and_snap_name(exec_time, '2m')
         log.debug(f'expecting snap {TestSnapSchedules.TEST_DIRECTORY}/.snap/scheduled-{snap_sfx_2} in ~{timo_2}s...')
-        to_wait = timo_2 + 2 # use max timeout
+        to_wait = timo_2 + 2  # use max timeout
 
         # verify snapshot schedule
         self.verify_schedule(TestSnapSchedules.TEST_DIRECTORY, ['1m', '2m'])
@@ -286,6 +292,7 @@ class TestSnapSchedules(TestSnapSchedulesHelper):
                     self.check_scheduled_snapshot(exec_time, timo_1)
                     return True
             return False
+
         def verify_added_2(snaps_added):
             log.debug(f'snapshots added={snaps_added}')
             self.assertEqual(len(snaps_added), 1)
@@ -319,10 +326,10 @@ class TestSnapSchedules(TestSnapSchedulesHelper):
 
         timo_1, snap_sfx = self.calc_wait_time_and_snap_name(exec_time, '1m')
         log.debug(f'expecting snap {TestSnapSchedules.TEST_DIRECTORY}/.snap/scheduled-{snap_sfx} in ~{timo_1}s...')
-        to_wait = timo_1 + 2 # some leeway to avoid false failures...
+        to_wait = timo_1 + 2  # some leeway to avoid false failures...
 
         # verify snapshot schedule
-        self.verify_schedule(TestSnapSchedules.TEST_DIRECTORY, ['1m'], retentions=[{'m':1}])
+        self.verify_schedule(TestSnapSchedules.TEST_DIRECTORY, ['1m'], retentions=[{'m': 1}])
 
         def verify_added(snaps_added):
             log.debug(f'snapshots added={snaps_added}')
@@ -337,7 +344,8 @@ class TestSnapSchedules(TestSnapSchedulesHelper):
         self.verify(TestSnapSchedules.TEST_DIRECTORY, to_wait)
         self.assert_if_not_verified()
 
-        timo_2 = timo_1 + 60 # expected snapshot removal timeout
+        timo_2 = timo_1 + 60  # expected snapshot removal timeout
+
         def verify_removed(snaps_removed):
             log.debug(f'snapshots removed={snaps_removed}')
             self.assertEqual(len(snaps_removed), 1)
@@ -462,7 +470,7 @@ class TestSnapSchedules(TestSnapSchedulesHelper):
         # cleanup
         self.fs_snap_schedule_cmd('remove', path=testdir, snap_schedule='1m')
         self.remove_snapshots(testdir[1:])
-        self.mount_a.run_shell(['rmdir', testdir[1:]])    
+        self.mount_a.run_shell(['rmdir', testdir[1:]])
 
     def test_schedule_auto_deactivation_for_non_existent_path(self):
         """
@@ -577,6 +585,357 @@ class TestSnapSchedules(TestSnapSchedulesHelper):
         self.mount_a.run_shell(['rmdir', test_dir])
 
 
+class TestSnapSchedulesSubvolAndGroupArguments(TestSnapSchedulesHelper):
+    def test_snap_schedule_subvol_and_group_arguments_01(self):
+        """
+        Test subvol schedule creation succeeds for default subvolgroup.
+        """
+        self._fs_cmd('subvolume', 'create', 'cephfs', 'sv1')
+        self.fs_snap_schedule_cmd('add', '--subvol', 'sv1', path='.', snap_schedule='1m')
+        self.fs_snap_schedule_cmd('remove', '--subvol', 'sv1', path='.', snap_schedule='1m')
+        self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv1')
+
+    def test_snap_schedule_subvol_and_group_arguments_02(self):
+        """
+        Test subvol schedule creation fails for non-default subvolgroup.
+        """
+        self._fs_cmd('subvolume', 'create', 'cephfs', 'sv1')
+        with self.assertRaises(CommandFailedError):
+            self.fs_snap_schedule_cmd('add', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m')
+        self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv1')
+
+    def test_snap_schedule_subvol_and_group_arguments_03(self):
+        """
+        Test subvol schedule creation fails when subvol exists only under default group.
+        """
+        self._fs_cmd('subvolumegroup', 'create', 'cephfs', 'mygrp')
+        self._fs_cmd('subvolume', 'create', 'cephfs', 'sv1', '--group_name', 'mygrp')
+
+        with self.assertRaises(CommandFailedError):
+            self.fs_snap_schedule_cmd('add', '--subvol', 'sv1', path='.', snap_schedule='1m')
+
+        self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv1', '--group_name', 'mygrp')
+        self._fs_cmd('subvolumegroup', 'rm', 'cephfs', 'mygrp')
+
+    def test_snap_schedule_subvol_and_group_arguments_04(self):
+        """
+        Test subvol schedule creation fails without subvol argument.
+        """
+        self._fs_cmd('subvolumegroup', 'create', 'cephfs', 'mygrp')
+        self._fs_cmd('subvolume', 'create', 'cephfs', 'sv1', '--group_name', 'mygrp')
+
+        with self.assertRaises(CommandFailedError):
+            self.fs_snap_schedule_cmd('add', '--group', 'mygrp', path='.', snap_schedule='1m')
+
+        self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv1', '--group_name', 'mygrp')
+        self._fs_cmd('subvolumegroup', 'rm', 'cephfs', 'mygrp')
+
+    def test_snap_schedule_subvol_and_group_arguments_05(self):
+        """
+        Test subvol schedule creation succeeds for a subvol under a subvolgroup.
+        """
+        self._fs_cmd('subvolumegroup', 'create', 'cephfs', 'mygrp')
+        self._fs_cmd('subvolume', 'create', 'cephfs', 'sv1', '--group_name', 'mygrp')
+
+        self.fs_snap_schedule_cmd('add', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+
+        self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv1', '--group_name', 'mygrp')
+        self._fs_cmd('subvolumegroup', 'rm', 'cephfs', 'mygrp')
+
+    def test_snap_schedule_subvol_and_group_arguments_06(self):
+        """
+        Test subvol schedule listing fails without a subvolgroup argument.
+        """
+        self._fs_cmd('subvolumegroup', 'create', 'cephfs', 'mygrp')
+        self._fs_cmd('subvolume', 'create', 'cephfs', 'sv1', '--group_name', 'mygrp')
+
+        self.fs_snap_schedule_cmd('add', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+        with self.assertRaises(CommandFailedError):
+            self.fs_snap_schedule_cmd('list', '--subvol', 'sv1', path='.', fs='cephfs')
+        self.fs_snap_schedule_cmd('remove', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+
+        self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv1', '--group_name', 'mygrp')
+        self._fs_cmd('subvolumegroup', 'rm', 'cephfs', 'mygrp')
+
+    def test_snap_schedule_subvol_and_group_arguments_07(self):
+        """
+        Test subvol schedule listing fails without a subvol argument.
+        """
+        self._fs_cmd('subvolumegroup', 'create', 'cephfs', 'mygrp')
+        self._fs_cmd('subvolume', 'create', 'cephfs', 'sv1', '--group_name', 'mygrp')
+
+        self.fs_snap_schedule_cmd('add', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+        with self.assertRaises(CommandFailedError):
+            self.fs_snap_schedule_cmd('list', '--group', 'mygrp', path='.', fs='cephfs')
+        self.fs_snap_schedule_cmd('remove', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+
+        self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv1', '--group_name', 'mygrp')
+        self._fs_cmd('subvolumegroup', 'rm', 'cephfs', 'mygrp')
+
+    def test_snap_schedule_subvol_and_group_arguments_08(self):
+        """
+        Test subvol schedule listing succeeds with a subvol and a subvolgroup argument.
+        """
+        self._fs_cmd('subvolumegroup', 'create', 'cephfs', 'mygrp')
+        self._fs_cmd('subvolume', 'create', 'cephfs', 'sv1', '--group_name', 'mygrp')
+
+        self.fs_snap_schedule_cmd('add', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+        self.fs_snap_schedule_cmd('list', '--subvol', 'sv1', '--group', 'mygrp', path='.', fs='cephfs')
+        self.fs_snap_schedule_cmd('remove', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+
+        self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv1', '--group_name', 'mygrp')
+        self._fs_cmd('subvolumegroup', 'rm', 'cephfs', 'mygrp')
+
+    def test_snap_schedule_subvol_and_group_arguments_09(self):
+        """
+        Test subvol schedule retention add fails for a subvol without a subvolgroup.
+        """
+        self._fs_cmd('subvolumegroup', 'create', 'cephfs', 'mygrp')
+        self._fs_cmd('subvolume', 'create', 'cephfs', 'sv1', '--group_name', 'mygrp')
+
+        self.fs_snap_schedule_cmd('add', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+        with self.assertRaises(CommandFailedError):
+            self.fs_snap_schedule_cmd('retention', 'add', '--subvol', 'sv1', path='.', retention_spec_or_period='h', retention_count='5')
+        self.fs_snap_schedule_cmd('remove', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+
+        self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv1', '--group_name', 'mygrp')
+        self._fs_cmd('subvolumegroup', 'rm', 'cephfs', 'mygrp')
+
+    def test_snap_schedule_subvol_and_group_arguments_10(self):
+        """
+        Test subvol schedule retention add fails for a subvol without a subvol argument.
+        """
+        self._fs_cmd('subvolumegroup', 'create', 'cephfs', 'mygrp')
+        self._fs_cmd('subvolume', 'create', 'cephfs', 'sv1', '--group_name', 'mygrp')
+
+        self.fs_snap_schedule_cmd('add', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+        with self.assertRaises(CommandFailedError):
+            self.fs_snap_schedule_cmd('retention', 'add', '--group', 'mygrp', path='.', retention_spec_or_period='h', retention_count='5')
+        self.fs_snap_schedule_cmd('remove', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+
+        self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv1', '--group_name', 'mygrp')
+        self._fs_cmd('subvolumegroup', 'rm', 'cephfs', 'mygrp')
+
+    def test_snap_schedule_subvol_and_group_arguments_11(self):
+        """
+        Test subvol schedule retention add succeeds for a subvol within a subvolgroup.
+        """
+        self._fs_cmd('subvolumegroup', 'create', 'cephfs', 'mygrp')
+        self._fs_cmd('subvolume', 'create', 'cephfs', 'sv1', '--group_name', 'mygrp')
+
+        self.fs_snap_schedule_cmd('add', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+        self.fs_snap_schedule_cmd('retention', 'add', '--subvol', 'sv1', '--group', 'mygrp', path='.', retention_spec_or_period='h', retention_count=5, fs='cephfs')
+        self.fs_snap_schedule_cmd('remove', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+
+        self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv1', '--group_name', 'mygrp')
+        self._fs_cmd('subvolumegroup', 'rm', 'cephfs', 'mygrp')
+
+    def test_snap_schedule_subvol_and_group_arguments_12(self):
+        """
+        Test subvol schedule activation fails for a subvol without a subvolgroup argument.
+        """
+        self._fs_cmd('subvolumegroup', 'create', 'cephfs', 'mygrp')
+        self._fs_cmd('subvolume', 'create', 'cephfs', 'sv1', '--group_name', 'mygrp')
+
+        self.fs_snap_schedule_cmd('add', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+        self.fs_snap_schedule_cmd('retention', 'add', '--subvol', 'sv1', '--group', 'mygrp', path='.', retention_spec_or_period='h', retention_count=5, fs='cephfs')
+        with self.assertRaises(CommandFailedError):
+            self.fs_snap_schedule_cmd('activate', '--subvol', 'sv1', path='.', fs='cephfs')
+        self.fs_snap_schedule_cmd('remove', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+
+        self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv1', '--group_name', 'mygrp')
+        self._fs_cmd('subvolumegroup', 'rm', 'cephfs', 'mygrp')
+
+    def test_snap_schedule_subvol_and_group_arguments_13(self):
+        """
+        Test subvol schedule activation fails for a subvol without a subvol argument.
+        """
+        self._fs_cmd('subvolumegroup', 'create', 'cephfs', 'mygrp')
+        self._fs_cmd('subvolume', 'create', 'cephfs', 'sv1', '--group_name', 'mygrp')
+
+        self.fs_snap_schedule_cmd('add', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+        self.fs_snap_schedule_cmd('retention', 'add', '--subvol', 'sv1', '--group', 'mygrp', path='.', retention_spec_or_period='h', retention_count=5, fs='cephfs')
+        with self.assertRaises(CommandFailedError):
+            self.fs_snap_schedule_cmd('activate', '--group', 'mygrp', path='.', fs='cephfs')
+        self.fs_snap_schedule_cmd('remove', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+
+        self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv1', '--group_name', 'mygrp')
+        self._fs_cmd('subvolumegroup', 'rm', 'cephfs', 'mygrp')
+
+    def test_snap_schedule_subvol_and_group_arguments_14(self):
+        """
+        Test subvol schedule activation succeeds for a subvol within a subvolgroup.
+        """
+        self._fs_cmd('subvolumegroup', 'create', 'cephfs', 'mygrp')
+        self._fs_cmd('subvolume', 'create', 'cephfs', 'sv1', '--group_name', 'mygrp')
+
+        self.fs_snap_schedule_cmd('add', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+        self.fs_snap_schedule_cmd('retention', 'add', '--subvol', 'sv1', '--group', 'mygrp', path='.', retention_spec_or_period='h', retention_count=5, fs='cephfs')
+        self.fs_snap_schedule_cmd('activate', '--subvol', 'sv1', '--group', 'mygrp', path='.', fs='cephfs')
+        self.fs_snap_schedule_cmd('remove', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+
+        self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv1', '--group_name', 'mygrp')
+        self._fs_cmd('subvolumegroup', 'rm', 'cephfs', 'mygrp')
+
+    def test_snap_schedule_subvol_and_group_arguments_15(self):
+        """
+        Test subvol schedule deactivation fails for a subvol without a subvolgroup argument.
+        """
+        self._fs_cmd('subvolumegroup', 'create', 'cephfs', 'mygrp')
+        self._fs_cmd('subvolume', 'create', 'cephfs', 'sv1', '--group_name', 'mygrp')
+
+        self.fs_snap_schedule_cmd('add', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+        self.fs_snap_schedule_cmd('retention', 'add', '--subvol', 'sv1', '--group', 'mygrp', path='.', retention_spec_or_period='h', retention_count=5, fs='cephfs')
+        self.fs_snap_schedule_cmd('activate', '--subvol', 'sv1', '--group', 'mygrp', path='.', fs='cephfs')
+        with self.assertRaises(CommandFailedError):
+            self.fs_snap_schedule_cmd('deactivate', '--subvol', 'sv1', path='.', fs='cephfs')
+        self.fs_snap_schedule_cmd('remove', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+
+        self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv1', '--group_name', 'mygrp')
+        self._fs_cmd('subvolumegroup', 'rm', 'cephfs', 'mygrp')
+
+    def test_snap_schedule_subvol_and_group_arguments_16(self):
+        """
+        Test subvol schedule deactivation fails for a subvol without a subvol argument.
+        """
+        self._fs_cmd('subvolumegroup', 'create', 'cephfs', 'mygrp')
+        self._fs_cmd('subvolume', 'create', 'cephfs', 'sv1', '--group_name', 'mygrp')
+
+        self.fs_snap_schedule_cmd('add', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+        self.fs_snap_schedule_cmd('retention', 'add', '--subvol', 'sv1', '--group', 'mygrp', path='.', retention_spec_or_period='h', retention_count=5, fs='cephfs')
+        self.fs_snap_schedule_cmd('activate', '--subvol', 'sv1', '--group', 'mygrp', path='.', fs='cephfs')
+        with self.assertRaises(CommandFailedError):
+            self.fs_snap_schedule_cmd('deactivate', '--group', 'mygrp', path='.', fs='cephfs')
+        self.fs_snap_schedule_cmd('remove', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+
+        self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv1', '--group_name', 'mygrp')
+        self._fs_cmd('subvolumegroup', 'rm', 'cephfs', 'mygrp')
+
+    def test_snap_schedule_subvol_and_group_arguments_17(self):
+        """
+        Test subvol schedule deactivation succeeds for a subvol within a subvolgroup.
+        """
+        self._fs_cmd('subvolumegroup', 'create', 'cephfs', 'mygrp')
+        self._fs_cmd('subvolume', 'create', 'cephfs', 'sv1', '--group_name', 'mygrp')
+
+        self.fs_snap_schedule_cmd('add', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+        self.fs_snap_schedule_cmd('retention', 'add', '--subvol', 'sv1', '--group', 'mygrp', path='.', retention_spec_or_period='h', retention_count=5, fs='cephfs')
+        self.fs_snap_schedule_cmd('activate', '--subvol', 'sv1', '--group', 'mygrp', path='.', fs='cephfs')
+        self.fs_snap_schedule_cmd('deactivate', '--subvol', 'sv1', '--group', 'mygrp', path='.', fs='cephfs')
+        self.fs_snap_schedule_cmd('remove', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+
+        self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv1', '--group_name', 'mygrp')
+        self._fs_cmd('subvolumegroup', 'rm', 'cephfs', 'mygrp')
+
+    def test_snap_schedule_subvol_and_group_arguments_18(self):
+        """
+        Test subvol schedule retention remove fails for a subvol without a subvolgroup argument.
+        """
+        self._fs_cmd('subvolumegroup', 'create', 'cephfs', 'mygrp')
+        self._fs_cmd('subvolume', 'create', 'cephfs', 'sv1', '--group_name', 'mygrp')
+
+        self.fs_snap_schedule_cmd('add', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+        self.fs_snap_schedule_cmd('retention', 'add', '--subvol', 'sv1', '--group', 'mygrp', path='.', retention_spec_or_period='h', retention_count=5, fs='cephfs')
+        self.fs_snap_schedule_cmd('activate', '--subvol', 'sv1', '--group', 'mygrp', path='.', fs='cephfs')
+        self.fs_snap_schedule_cmd('deactivate', '--subvol', 'sv1', '--group', 'mygrp', path='.', fs='cephfs')
+        with self.assertRaises(CommandFailedError):
+            self.fs_snap_schedule_cmd('retention', 'remove', '--subvol', 'sv1', path='.', retention_spec_or_period='h', retention_count='5', fs='cephfs')
+        self.fs_snap_schedule_cmd('remove', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+
+        self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv1', '--group_name', 'mygrp')
+        self._fs_cmd('subvolumegroup', 'rm', 'cephfs', 'mygrp')
+
+    def test_snap_schedule_subvol_and_group_arguments_19(self):
+        """
+        Test subvol schedule retention remove fails for a subvol without a subvol argument.
+        """
+        self._fs_cmd('subvolumegroup', 'create', 'cephfs', 'mygrp')
+        self._fs_cmd('subvolume', 'create', 'cephfs', 'sv1', '--group_name', 'mygrp')
+
+        self.fs_snap_schedule_cmd('add', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+        self.fs_snap_schedule_cmd('retention', 'add', '--subvol', 'sv1', '--group', 'mygrp', path='.', retention_spec_or_period='h', retention_count=5, fs='cephfs')
+        self.fs_snap_schedule_cmd('activate', '--subvol', 'sv1', '--group', 'mygrp', path='.', fs='cephfs')
+        self.fs_snap_schedule_cmd('deactivate', '--subvol', 'sv1', '--group', 'mygrp', path='.', fs='cephfs')
+        with self.assertRaises(CommandFailedError):
+            self.fs_snap_schedule_cmd('retention', 'remove', '--group', 'mygrp', path='.', retention_spec_or_period='h', retention_count='5', fs='cephfs')
+        self.fs_snap_schedule_cmd('remove', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+
+        self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv1', '--group_name', 'mygrp')
+        self._fs_cmd('subvolumegroup', 'rm', 'cephfs', 'mygrp')
+
+    def test_snap_schedule_subvol_and_group_arguments_20(self):
+        """
+        Test subvol schedule retention remove succeeds for a subvol within a subvolgroup.
+        """
+        self._fs_cmd('subvolumegroup', 'create', 'cephfs', 'mygrp')
+        self._fs_cmd('subvolume', 'create', 'cephfs', 'sv1', '--group_name', 'mygrp')
+
+        self.fs_snap_schedule_cmd('add', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+        self.fs_snap_schedule_cmd('retention', 'add', '--subvol', 'sv1', '--group', 'mygrp', path='.', retention_spec_or_period='h', retention_count=5, fs='cephfs')
+        self.fs_snap_schedule_cmd('activate', '--subvol', 'sv1', '--group', 'mygrp', path='.', fs='cephfs')
+        self.fs_snap_schedule_cmd('deactivate', '--subvol', 'sv1', '--group', 'mygrp', path='.', fs='cephfs')
+        self.fs_snap_schedule_cmd('retention', 'remove', '--subvol', 'sv1', '--group', 'mygrp', path='.', retention_spec_or_period='h', retention_count='5', fs='cephfs')
+        self.fs_snap_schedule_cmd('remove', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+
+        self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv1', '--group_name', 'mygrp')
+        self._fs_cmd('subvolumegroup', 'rm', 'cephfs', 'mygrp')
+
+    def test_snap_schedule_subvol_and_group_arguments_21(self):
+        """
+        Test subvol schedule remove fails for a subvol without a subvolgroup argument.
+        """
+        self._fs_cmd('subvolumegroup', 'create', 'cephfs', 'mygrp')
+        self._fs_cmd('subvolume', 'create', 'cephfs', 'sv1', '--group_name', 'mygrp')
+
+        self.fs_snap_schedule_cmd('add', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+        self.fs_snap_schedule_cmd('retention', 'add', '--subvol', 'sv1', '--group', 'mygrp', path='.', retention_spec_or_period='h', retention_count=5, fs='cephfs')
+        self.fs_snap_schedule_cmd('activate', '--subvol', 'sv1', '--group', 'mygrp', path='.', fs='cephfs')
+        self.fs_snap_schedule_cmd('deactivate', '--subvol', 'sv1', '--group', 'mygrp', path='.', fs='cephfs')
+        self.fs_snap_schedule_cmd('retention', 'remove', '--subvol', 'sv1', '--group', 'mygrp', path='.', retention_spec_or_period='h', retention_count='5', fs='cephfs')
+        with self.assertRaises(CommandFailedError):
+            self.fs_snap_schedule_cmd('remove', '--subvol', 'sv1', path='.', snap_schedule='1m', fs='cephfs')
+        self.fs_snap_schedule_cmd('remove', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+
+        self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv1', '--group_name', 'mygrp')
+        self._fs_cmd('subvolumegroup', 'rm', 'cephfs', 'mygrp')
+
+    def test_snap_schedule_subvol_and_group_arguments_22(self):
+        """
+        Test subvol schedule remove fails for a subvol without a subvol argument.
+        """
+        self._fs_cmd('subvolumegroup', 'create', 'cephfs', 'mygrp')
+        self._fs_cmd('subvolume', 'create', 'cephfs', 'sv1', '--group_name', 'mygrp')
+
+        self.fs_snap_schedule_cmd('add', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+        self.fs_snap_schedule_cmd('retention', 'add', '--subvol', 'sv1', '--group', 'mygrp', path='.', retention_spec_or_period='h', retention_count=5, fs='cephfs')
+        self.fs_snap_schedule_cmd('activate', '--subvol', 'sv1', '--group', 'mygrp', path='.', fs='cephfs')
+        self.fs_snap_schedule_cmd('deactivate', '--subvol', 'sv1', '--group', 'mygrp', path='.', fs='cephfs')
+        self.fs_snap_schedule_cmd('retention', 'remove', '--subvol', 'sv1', '--group', 'mygrp', path='.', retention_spec_or_period='h', retention_count='5', fs='cephfs')
+        with self.assertRaises(CommandFailedError):
+            self.fs_snap_schedule_cmd('remove', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+        self.fs_snap_schedule_cmd('remove', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+
+        self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv1', '--group_name', 'mygrp')
+        self._fs_cmd('subvolumegroup', 'rm', 'cephfs', 'mygrp')
+
+    def test_snap_schedule_subvol_and_group_arguments_23(self):
+        """
+        Test subvol schedule remove succeeds for a subvol within a subvolgroup.
+        """
+        self._fs_cmd('subvolumegroup', 'create', 'cephfs', 'mygrp')
+        self._fs_cmd('subvolume', 'create', 'cephfs', 'sv1', '--group_name', 'mygrp')
+
+        self.fs_snap_schedule_cmd('add', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+        self.fs_snap_schedule_cmd('retention', 'add', '--subvol', 'sv1', '--group', 'mygrp', path='.', retention_spec_or_period='h', retention_count=5, fs='cephfs')
+        self.fs_snap_schedule_cmd('activate', '--subvol', 'sv1', '--group', 'mygrp', path='.', fs='cephfs')
+        self.fs_snap_schedule_cmd('deactivate', '--subvol', 'sv1', '--group', 'mygrp', path='.', fs='cephfs')
+        self.fs_snap_schedule_cmd('retention', 'remove', '--subvol', 'sv1', '--group', 'mygrp', path='.', retention_spec_or_period='h', retention_count='5', fs='cephfs')
+        self.fs_snap_schedule_cmd('remove', '--subvol', 'sv1', '--group', 'mygrp', path='.', snap_schedule='1m', fs='cephfs')
+
+        self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv1', '--group_name', 'mygrp')
+        self._fs_cmd('subvolumegroup', 'rm', 'cephfs', 'mygrp')
+
+
 class TestSnapSchedulesSnapdir(TestSnapSchedulesHelper):
     def remove_snapshots(self, dir_path, sdn):
         snap_path = f'{dir_path}/{sdn}'
@@ -611,10 +970,10 @@ class TestSnapSchedulesSnapdir(TestSnapSchedulesHelper):
         timo, snap_sfx = self.calc_wait_time_and_snap_name(exec_time, '1m')
         sdn = self.get_snap_dir_name()
         log.info(f'expecting snap {TestSnapSchedulesSnapdir.TEST_DIRECTORY}/{sdn}/scheduled-{snap_sfx} in ~{timo}s...')
-        
+
         # verify snapshot schedule
-        self.verify_schedule(TestSnapSchedulesSnapdir.TEST_DIRECTORY, ['1m'], retentions=[{'m':1}])
-        
+        self.verify_schedule(TestSnapSchedulesSnapdir.TEST_DIRECTORY, ['1m'], retentions=[{'m': 1}])
+
         # remove snapshot schedule
         self.fs_snap_schedule_cmd('remove', path=TestSnapSchedulesSnapdir.TEST_DIRECTORY)
 
