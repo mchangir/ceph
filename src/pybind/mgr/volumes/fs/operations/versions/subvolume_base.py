@@ -366,14 +366,14 @@ class SubvolumeBase(object):
                                   .format(self.subvolname))
 
     def _trash_dir(self, path):
-        create_trashcan(self.fs, self.vol_spec)
-        with open_trashcan(self.fs, self.vol_spec) as trashcan:
+        create_trashcan(self.fs, self.vol_spec, self.group_name, self.subvol_name)
+        with open_trashcan(self.fs, self.vol_spec, self.group_name, self.subvol_name) as trashcan:
             trashcan.dump(path)
             log.info("subvolume path '{0}' moved to trashcan".format(path))
 
     def _link_dir(self, path, bname):
         create_trashcan(self.fs, self.vol_spec)
-        with open_trashcan(self.fs, self.vol_spec) as trashcan:
+        with open_trashcan(self.fs, self.vol_spec, self.group_name, self.subvol_name) as trashcan:
             trashcan.link(path, bname)
             log.info("subvolume path '{0}' "
                      "linked in trashcan bname {1}".format(path, bname))

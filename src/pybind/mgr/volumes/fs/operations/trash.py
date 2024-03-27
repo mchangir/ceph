@@ -13,14 +13,24 @@ log = logging.getLogger(__name__)
 class Trash(GroupTemplate):
     GROUP_NAME = "_deleting"
 
-    def __init__(self, fs, vol_spec):
+    def __init__(self, fs, vol_spec, group_name, subvol_name):
         self.fs = fs
         self.vol_spec = vol_spec
-        self.groupname = Trash.GROUP_NAME
+        self.groupname = group_name
+        self.subvolname = subvol_name
 
     @property
     def path(self):
-        return os.path.join(self.vol_spec.base_dir.encode('utf-8'), self.groupname.encode('utf-8'))
+        mypath = self.vol_spec.base_dir.encode('utf-8')
+        if self.groupname:
+            mypath =  os.path.join(mypath,
+                                   self.groupname.encode('utf-8'),
+                                   self.subvolname.encode('utf-8'))
+        else:
+            mypath =  os.path.join(mypath, Trash.GROUP_NAME.encode('utf-8'))
+
+        mypath = os.path.join(mypath, '.trash'.encode('utf-8'))
+        return mypath
 
     @property
     def unique_trash_path(self):
@@ -113,7 +123,7 @@ class Trash(GroupTemplate):
         except cephfs.Error as e:
             raise VolumeException(-e.args[0], e.args[1])
 
-def create_trashcan(fs, vol_spec):
+def create_trashcan(fs, vol_spec, group_name=None, subvol_name=None):
     """
     create a trash can.
 
@@ -121,14 +131,14 @@ def create_trashcan(fs, vol_spec):
     :param vol_spec: volume specification
     :return: None
     """
-    trashcan = Trash(fs, vol_spec)
+    trashcan = Trash(fs, vol_spec, group_name, subvol_name)
     try:
         fs.mkdirs(trashcan.path, 0o700)
     except cephfs.Error as e:
         raise VolumeException(-e.args[0], e.args[1])
 
 @contextmanager
-def open_trashcan(fs, vol_spec):
+def open_trashcan(fs, vol_spec, group_name=None, subvol_name=None):
     """
     open a trash can. This API is to be used as a context manager.
 
@@ -136,7 +146,7 @@ def open_trashcan(fs, vol_spec):
     :param vol_spec: volume specification
     :return: yields a trash can object (subclass of GroupTemplate)
     """
-    trashcan = Trash(fs, vol_spec)
+    trashcan = Trash(fs, vol_spec, group_name, subvol_name)
     try:
         fs.stat(trashcan.path)
     except cephfs.Error as e:
