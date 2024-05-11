@@ -196,6 +196,12 @@ class TestSnapSchedulesHelper(CephFSTestCase):
             self.assertTrue(retention in json_res['retention'])
 
 class TestSnapSchedules(TestSnapSchedulesHelper):
+    def setUp(self):
+        super(TestSnapSchedules, self).setUp()
+
+    def tearDown(self):
+        super(TestSnapSchedules, self).tearDown()
+
     def remove_snapshots(self, dir_path):
         snap_path = f'{dir_path}/.snap'
 
@@ -451,6 +457,8 @@ class TestSnapSchedules(TestSnapSchedulesHelper):
             self.remove_snapshots(d[1:])
             self.mount_a.run_shell(['rmdir', d[1:]])
 
+        self.mount_a.run_shell(['rmdir', TestSnapSchedules.TEST_DIRECTORY])
+
     def test_snap_schedule_with_mgr_restart(self):
         """Test that snap schedule is resumed after mgr restart"""
         self.mount_a.run_shell(['mkdir', '-p', TestSnapSchedules.TEST_DIRECTORY])
@@ -600,11 +608,15 @@ class TestSnapSchedules(TestSnapSchedulesHelper):
         test_dir = TestSnapSchedulesSnapdir.TEST_DIRECTORY + "/bad_period_spec"
         self.mount_a.run_shell(['rmdir', test_dir])
 
+        self.mount_a.run_shell(['rmdir', TestSnapSchedulesSnapdir.TEST_DIRECTORY])
 
 class TestSnapSchedulesSubvolAndGroupArguments(TestSnapSchedulesHelper):
     def setUp(self):
         super(TestSnapSchedulesSubvolAndGroupArguments, self).setUp()
         self.CREATE_VERSION = int(self.mount_a.ctx['config']['overrides']['subvolume_version'])
+
+    def tearDown(self):
+        super(TestSnapSchedulesSubvolAndGroupArguments, self).tearDown()
 
     def _create_v1_subvolume(self, subvol_name, subvol_group=None, has_snapshot=False, subvol_type='subvolume', state='complete'):
         group = subvol_group if subvol_group is not None else '_nogroup'
@@ -1036,6 +1048,12 @@ class TestSnapSchedulesSubvolAndGroupArguments(TestSnapSchedulesHelper):
 
 
 class TestSnapSchedulesSnapdir(TestSnapSchedulesHelper):
+    def setUp(self):
+        super(TestSnapSchedulesSnapdir, self).setUp()
+
+    def tearDown(self):
+        super(TestSnapSchedulesSnapdir, self).tearDown()
+
     def test_snap_dir_name(self):
         """Test the correctness of snap directory name"""
         self.mount_a.run_shell(['mkdir', '-p', TestSnapSchedulesSnapdir.TEST_DIRECTORY])
@@ -1062,6 +1080,12 @@ class TestSnapSchedulesSnapdir(TestSnapSchedulesHelper):
 
 
 class TestSnapSchedulesFetchForeignConfig(TestSnapSchedulesHelper):
+    def setUp(self):
+        super(TestSnapSchedulesFetchForeignConfig, self).setUp()
+
+    def tearDown(self):
+        super(TestSnapSchedulesFetchForeignConfig, self).tearDown()
+
     def test_fetch_for_mds_max_snaps_per_dir(self):
         """Test the correctness of snap directory name"""
         dir_path = TestSnapSchedulesHelper.TEST_DIRECTORY
@@ -1121,6 +1145,12 @@ pass for tests defined above or elsewhere.
 class TestSnapSchedulesMandatoryFSArgument(TestSnapSchedulesHelper):
     REQUIRE_BACKUP_FILESYSTEM = True
     TEST_DIRECTORY = 'mandatory_fs_argument_test_dir'
+
+    def setUp(self):
+        super(TestSnapSchedulesMandatoryFSArgument, self).setUp()
+
+    def tearDown(self):
+        super(TestSnapSchedulesMandatoryFSArgument, self).tearDown()
 
     def test_snap_schedule_without_fs_argument(self):
         """Test command fails without --fs argument in presence of multiple fs"""
