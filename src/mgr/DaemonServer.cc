@@ -897,6 +897,10 @@ public:
       data(m_mgr->get_data()) {
   }
 
+  ~CommandContext() {
+    dout(20) << __func__ << ": " << this << dendl;
+  }
+
   void reply(int r, const std::stringstream &ss) {
     reply(r, ss.str());
   }
@@ -2558,6 +2562,9 @@ bool DaemonServer::_handle_command(
 
   op->mark_queued_for_module();
 
+  if (mod_name == "volumes") {
+    dout(10) << mod_name << " cmdctx:" << cmdctx.get() << " use_count:" << cmdctx.use_count() << dendl;
+  }
   dout(10) << "passing through command '" << prefix << "' size " << cmdctx->cmdmap.size() << dendl;
   Finisher& mod_finisher = py_modules.get_active_module_finisher(mod_name);
 

@@ -44,10 +44,29 @@ bool Finisher::is_empty()
   return finisher_queue.empty();
 }
 
+void Finisher::queue(Context *c, int r /*= 0*/) {
+  ldout(cct, 10) << "Finisher::queue(" << thread_name << ") locking finisher_lock" << dendl;
+  std::unique_lock ul(finisher_lock);
+  ldout(cct, 10) << "Finisher::queue(" << thread_name << ") locked finisher_lock" << dendl;
+  bool was_empty = finisher_queue.empty();
+  ldout(cct, 10) << "Finisher::queue(" << thread_name << ") finisher_queue was_empty:" << (was_empty ? "yes" : "no") << dendl;
+  finisher_queue.push_back(std::make_pair(c, r));
+  ldout(cct, 10) << "Finisher::queue(" << thread_name << ") finisher_queue:" << finisher_queue << dendl;
+  if (was_empty) {
+    ldout(cct, 10) << "Finisher::queue(" << thread_name << ") notifying to finisher_cond" << finisher_queue << dendl;
+    finisher_cond.notify_one();
+  } else {
+    ldout(cct, 10) << "Finisher::queue(" << thread_name << ") not notifying to finisher_cond" << finisher_queue << dendl;
+  }
+  ldout(cct, 10) << "Finisher::queue(" << thread_name << ") notify done to finisher_cond" << finisher_queue << dendl;
+  if (logger)
+    logger->inc(l_finisher_queue_len);
+}
+
 void *Finisher::finisher_thread_entry()
 {
   std::unique_lock ul(finisher_lock);
-  ldout(cct, 10) << "finisher_thread start" << dendl;
+  ldout(cct, 10) << "finisher_thread(" << thread_name << ") start" << dendl;
 
   utime_t start;
   uint64_t count = 0;
@@ -60,7 +79,7 @@ void *Finisher::finisher_thread_entry()
       in_progress_queue.swap(finisher_queue);
       finisher_running = true;
       ul.unlock();
-      ldout(cct, 10) << "finisher_thread doing " << in_progress_queue << dendl;
+      ldout(cct, 10) << "finisher_thread(" << thread_name << ") doing " << in_progress_queue << dendl;
 
       if (logger) {
 	start = ceph_clock_now();
@@ -69,9 +88,16 @@ void *Finisher::finisher_thread_entry()
 
       // Now actually process the contexts.
       for (auto p : in_progress_queue) {
+	ldout(cct, 10) << "finisher_thread(" << thread_name << ") completing context:"
+		       << p.first << " with r:" << p.second
+		       << dendl;
+
 	p.first->complete(p.second);
+
+	ldout(cct, 10) << "finisher_thread(" << thread_name << ") context completed"
+		       << dendl;
       }
-      ldout(cct, 10) << "finisher_thread done with " << in_progress_queue
+      ldout(cct, 10) << "finisher_thread(" << thread_name << ") done with " << in_progress_queue
                      << dendl;
       in_progress_queue.clear();
       if (logger) {
@@ -82,20 +108,20 @@ void *Finisher::finisher_thread_entry()
       ul.lock();
       finisher_running = false;
     }
-    ldout(cct, 10) << "finisher_thread empty" << dendl;
+    ldout(cct, 10) << "finisher_thread(" << thread_name << ") empty" << dendl;
     if (unlikely(finisher_empty_wait))
       finisher_empty_cond.notify_all();
     if (finisher_stop)
       break;
     
-    ldout(cct, 10) << "finisher_thread sleeping" << dendl;
+    ldout(cct, 10) << "finisher_thread(" << thread_name << ") sleeping" << dendl;
     finisher_cond.wait(ul);
   }
   // If we are exiting, we signal the thread waiting in stop(),
   // otherwise it would never unblock
   finisher_empty_cond.notify_all();
 
-  ldout(cct, 10) << "finisher_thread stop" << dendl;
+  ldout(cct, 10) << "finisher_thread(" << thread_name << ") stop" << dendl;
   finisher_stop = false;
   return 0;
 }

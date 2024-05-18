@@ -65,6 +65,7 @@ class Finisher {
 
  public:
   /// Add a context to complete, optionally specifying a parameter for the complete function.
+#if 0
   void queue(Context *c, int r = 0) {
     std::unique_lock ul(finisher_lock);
     bool was_empty = finisher_queue.empty();
@@ -75,7 +76,9 @@ class Finisher {
     if (logger)
       logger->inc(l_finisher_queue_len);
   }
-
+#else
+  void queue(Context *c, int r = 0);
+#endif
   void queue(std::list<Context*>& ls) {
     {
       std::unique_lock ul(finisher_lock);
