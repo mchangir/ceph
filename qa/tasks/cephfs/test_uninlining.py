@@ -99,9 +99,13 @@ class TestDataUninlining(CephFSTestCase):
                 log.debug(f"try #{i+1} - dump inode {inode}")
                 try:
                     json_out = self.fs.rank_tell(['dump', 'inode', inode], rank=rank)
-                    return json_out
+                    if len(json_out) != 0:
+                        return json_out
                 except json.decoder.JSONDecodeError:
                     time.sleep(1)
+                finally:
+                    if len(json_out) == 0:
+                        time.sleep(1)
             raise json.decoder.JSONDecodeError(f'No JSON found after {retries} attempts', None, 0)
 
         info = []
