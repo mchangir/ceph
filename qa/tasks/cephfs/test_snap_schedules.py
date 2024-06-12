@@ -290,7 +290,7 @@ class TestSnapSchedules(TestSnapSchedulesHelper):
 
         self.mount_a.run_shell(['rmdir', TestSnapSchedules.TEST_DIRECTORY])
 
-    def test_multi_snap_schedule(self):
+    def test_z_multi_snap_schedule(self):
         """Test exisitence of multiple scheduled snapshots"""
         self.mount_a.run_shell(['mkdir', '-p', TestSnapSchedules.TEST_DIRECTORY])
 
