@@ -97,8 +97,7 @@ class TestSnapSchedulesHelper(CephFSTestCase):
     def _dump_on_update(self):
         self.config_set('mgr', 'mgr/snap_schedule/dump_on_update', True)
 
-    def setUp(self):
-        super(TestSnapSchedulesHelper, self).setUp()
+    def _init(self):
         self.volname = None
         self.vol_created = False
         self._create_or_reuse_test_volume()
@@ -110,9 +109,8 @@ class TestSnapSchedulesHelper(CephFSTestCase):
         self._allow_minute_granularity_snapshots()
         self._dump_on_update()
 
-    def tearDown(self):
+    def _destroy(self):
         self._disable_snap_schedule()
-        super(TestSnapSchedulesHelper, self).tearDown()
 
     def _schedule_to_timeout(self, schedule):
         mult = schedule[-1]
@@ -197,8 +195,10 @@ class TestSnapSchedulesHelper(CephFSTestCase):
 class TestSnapSchedules(TestSnapSchedulesHelper):
     def setUp(self):
         super(TestSnapSchedules, self).setUp()
+        self._init()
 
     def tearDown(self):
+        self._destroy()
         super(TestSnapSchedules, self).tearDown()
 
     def remove_snapshots(self, dir_path):
@@ -612,9 +612,11 @@ class TestSnapSchedules(TestSnapSchedulesHelper):
 class TestSnapSchedulesSubvolAndGroupArguments(TestSnapSchedulesHelper):
     def setUp(self):
         super(TestSnapSchedulesSubvolAndGroupArguments, self).setUp()
+        self._init()
         self.CREATE_VERSION = int(self.mount_a.ctx['config']['overrides']['subvolume_version'])
 
     def tearDown(self):
+        self._destroy()
         super(TestSnapSchedulesSubvolAndGroupArguments, self).tearDown()
 
     def _create_v1_subvolume(self, subvol_name, subvol_group=None, has_snapshot=False, subvol_type='subvolume', state='complete'):
@@ -1049,8 +1051,10 @@ class TestSnapSchedulesSubvolAndGroupArguments(TestSnapSchedulesHelper):
 class TestSnapSchedulesSnapdir(TestSnapSchedulesHelper):
     def setUp(self):
         super(TestSnapSchedulesSnapdir, self).setUp()
+        self._init()
 
     def tearDown(self):
+        self._destroy()
         super(TestSnapSchedulesSnapdir, self).tearDown()
 
     def test_snap_dir_name(self):
@@ -1081,8 +1085,10 @@ class TestSnapSchedulesSnapdir(TestSnapSchedulesHelper):
 class TestSnapSchedulesFetchForeignConfig(TestSnapSchedulesHelper):
     def setUp(self):
         super(TestSnapSchedulesFetchForeignConfig, self).setUp()
+        self._init()
 
     def tearDown(self):
+        self._destroy()
         super(TestSnapSchedulesFetchForeignConfig, self).tearDown()
 
     def test_fetch_for_mds_max_snaps_per_dir(self):
@@ -1147,8 +1153,10 @@ class TestSnapSchedulesMandatoryFSArgument(TestSnapSchedulesHelper):
 
     def setUp(self):
         super(TestSnapSchedulesMandatoryFSArgument, self).setUp()
+        self._init()
 
     def tearDown(self):
+        self._destroy()
         super(TestSnapSchedulesMandatoryFSArgument, self).tearDown()
 
     def test_snap_schedule_without_fs_argument(self):
