@@ -112,8 +112,6 @@ class TestSnapSchedulesHelper(CephFSTestCase):
 
     def tearDown(self):
         self._disable_snap_schedule()
-        if self.vol_created:
-            self._delete_test_volume()
         super(TestSnapSchedulesHelper, self).tearDown()
 
     def _schedule_to_timeout(self, schedule):
