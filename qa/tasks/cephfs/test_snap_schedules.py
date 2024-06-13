@@ -111,9 +111,9 @@ class TestSnapSchedulesHelper(CephFSTestCase):
         self._dump_on_update()
 
     def tearDown(self):
+        self._disable_snap_schedule()
         if self.vol_created:
             self._delete_test_volume()
-        self._disable_snap_schedule()
         super(TestSnapSchedulesHelper, self).tearDown()
 
     def _schedule_to_timeout(self, schedule):
@@ -418,8 +418,8 @@ class TestSnapSchedules(TestSnapSchedulesHelper):
         self.assertTrue(snap_stats['fs_count'] == snap_stats['db_count'])
 
     def test_concurrent_snap_creates(self):
-        """Test concurrent snap creates in same file-system without db issues"""
         """
+        Test concurrent snap creates in same file-system without db issues
         Test snap creates at same cadence on same fs to verify correct stats.
         A single SQLite DB Connection handle cannot be used to run concurrent
         transactions and results transaction aborts. This test makes sure that
