@@ -20,7 +20,7 @@ def seconds_upto_next_schedule(time_from, timo):
     ts = int(time_from)
     return ((int(ts / 60) * 60) + timo) - ts
 
-class TestSnapSchedulesHelper(CephFSTestCase):
+class TestSnapSchedulesHelper:
     CLIENTS_REQUIRED = 1
 
     TEST_VOLUME_NAME = 'snap_vol'
@@ -192,7 +192,7 @@ class TestSnapSchedulesHelper(CephFSTestCase):
         for retention in retentions:
             self.assertTrue(retention in json_res['retention'])
 
-class TestSnapSchedules(TestSnapSchedulesHelper):
+class TestSnapSchedules(CephFSTestCase, TestSnapSchedulesHelper):
     def setUp(self):
         super(TestSnapSchedules, self).setUp()
         self._init()
@@ -609,7 +609,7 @@ class TestSnapSchedules(TestSnapSchedulesHelper):
 
         self.mount_a.run_shell(['rmdir', TestSnapSchedulesSnapdir.TEST_DIRECTORY])
 
-class TestSnapSchedulesSubvolAndGroupArguments(TestSnapSchedulesHelper):
+class TestSnapSchedulesSubvolAndGroupArguments(CephFSTestCase, TestSnapSchedulesHelper):
     def setUp(self):
         super(TestSnapSchedulesSubvolAndGroupArguments, self).setUp()
         self._init()
@@ -1048,7 +1048,7 @@ class TestSnapSchedulesSubvolAndGroupArguments(TestSnapSchedulesHelper):
         self._fs_cmd('subvolumegroup', 'rm', 'cephfs', 'mygrp23')
 
 
-class TestSnapSchedulesSnapdir(TestSnapSchedulesHelper):
+class TestSnapSchedulesSnapdir(CephFSTestCase, TestSnapSchedulesHelper):
     def setUp(self):
         super(TestSnapSchedulesSnapdir, self).setUp()
         self._init()
@@ -1082,7 +1082,7 @@ class TestSnapSchedulesSnapdir(TestSnapSchedulesHelper):
         self.mount_a.run_shell(['rmdir', TestSnapSchedulesSnapdir.TEST_DIRECTORY])
 
 
-class TestSnapSchedulesFetchForeignConfig(TestSnapSchedulesHelper):
+class TestSnapSchedulesFetchForeignConfig(CephFSTestCase, TestSnapSchedulesHelper):
     def setUp(self):
         super(TestSnapSchedulesFetchForeignConfig, self).setUp()
         self._init()
@@ -1147,7 +1147,7 @@ pass for tests defined above or elsewhere.
 """
 
 
-class TestSnapSchedulesMandatoryFSArgument(TestSnapSchedulesHelper):
+class TestSnapSchedulesMandatoryFSArgument(CephFSTestCase, TestSnapSchedulesHelper):
     REQUIRE_BACKUP_FILESYSTEM = True
     TEST_DIRECTORY = 'mandatory_fs_argument_test_dir'
 
