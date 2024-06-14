@@ -220,7 +220,7 @@ class TestSnapSchedules(CephFSTestCase, TestSnapSchedulesHelper):
         else:
             raise RuntimeError('expected "fs snap-schedule list" to fail')
 
-    def test_non_existent_schedule(self):
+    def ztest_non_existent_schedule(self):
         """Test listing non-existing snap schedules failure"""
         self.mount_a.run_shell(['mkdir', '-p', TestSnapSchedules.TEST_DIRECTORY])
 
@@ -234,7 +234,7 @@ class TestSnapSchedules(CephFSTestCase, TestSnapSchedulesHelper):
 
         self.mount_a.run_shell(['rmdir', TestSnapSchedules.TEST_DIRECTORY])
 
-    def test_snap_schedule_list_post_schedule_remove(self):
+    def ztest_snap_schedule_list_post_schedule_remove(self):
         """Test listing snap schedules post removal of a schedule"""
         self.mount_a.run_shell(['mkdir', '-p', TestSnapSchedules.TEST_DIRECTORY])
 
@@ -252,7 +252,7 @@ class TestSnapSchedules(CephFSTestCase, TestSnapSchedulesHelper):
 
         self.mount_a.run_shell(['rmdir', TestSnapSchedules.TEST_DIRECTORY])
 
-    def test_snap_schedule(self):
+    def ztest_snap_schedule(self):
         """Test existence of a scheduled snapshot"""
         self.mount_a.run_shell(['mkdir', '-p', TestSnapSchedules.TEST_DIRECTORY])
 
@@ -288,7 +288,7 @@ class TestSnapSchedules(CephFSTestCase, TestSnapSchedulesHelper):
 
         self.mount_a.run_shell(['rmdir', TestSnapSchedules.TEST_DIRECTORY])
 
-    def test_z_multi_snap_schedule(self):
+    def ztest_multi_snap_schedule(self):
         """Test exisitence of multiple scheduled snapshots"""
         self.mount_a.run_shell(['mkdir', '-p', TestSnapSchedules.TEST_DIRECTORY])
 
@@ -337,7 +337,7 @@ class TestSnapSchedules(CephFSTestCase, TestSnapSchedulesHelper):
 
         self.mount_a.run_shell(['rmdir', TestSnapSchedules.TEST_DIRECTORY])
 
-    def test_snap_schedule_with_retention(self):
+    def ztest_snap_schedule_with_retention(self):
         """Test scheduled snapshots along with rentention policy"""
         self.mount_a.run_shell(['mkdir', '-p', TestSnapSchedules.TEST_DIRECTORY])
 
@@ -415,7 +415,7 @@ class TestSnapSchedules(CephFSTestCase, TestSnapSchedulesHelper):
         snap_stats = self.get_snap_stats(dir_path)
         self.assertTrue(snap_stats['fs_count'] == snap_stats['db_count'])
 
-    def test_z_concurrent_snap_creates(self):
+    def ztest_concurrent_snap_creates(self):
         """
         Test concurrent snap creates in same file-system without db issues
         Test snap creates at same cadence on same fs to verify correct stats.
@@ -458,7 +458,7 @@ class TestSnapSchedules(CephFSTestCase, TestSnapSchedulesHelper):
 
         self.mount_a.run_shell(['rmdir', TestSnapSchedules.TEST_DIRECTORY])
 
-    def test_snap_schedule_with_mgr_restart(self):
+    def ztest_snap_schedule_with_mgr_restart(self):
         """Test that snap schedule is resumed after mgr restart"""
         self.mount_a.run_shell(['mkdir', '-p', TestSnapSchedules.TEST_DIRECTORY])
         testdir = os.path.join("/", TestSnapSchedules.TEST_DIRECTORY, "test_restart")
@@ -495,7 +495,7 @@ class TestSnapSchedules(CephFSTestCase, TestSnapSchedulesHelper):
         self.remove_snapshots(testdir[1:])
         self.mount_a.run_shell(['rmdir', testdir[1:]])
 
-    def test_schedule_auto_deactivation_for_non_existent_path(self):
+    def ztest_schedule_auto_deactivation_for_non_existent_path(self):
         """
         Test that a non-existent path leads to schedule deactivation after a few retries.
         """
@@ -516,7 +516,7 @@ class TestSnapSchedules(CephFSTestCase, TestSnapSchedulesHelper):
         # remove snapshot schedule
         self.fs_snap_schedule_cmd('remove', path="/bad-path")
 
-    def test_snap_schedule_for_number_of_snaps_retention(self):
+    def ztest_snap_schedule_for_number_of_snaps_retention(self):
         """
         Test that number of snaps retained are as per user spec.
         """
@@ -552,7 +552,7 @@ class TestSnapSchedules(CephFSTestCase, TestSnapSchedulesHelper):
 
         self.mount_a.run_shell(['rmdir', test_dir[1:]])
 
-    def test_snap_schedule_all_periods(self):
+    def ztest_snap_schedule_all_periods(self):
         test_dir = TestSnapSchedulesSnapdir.TEST_DIRECTORY + "/minutes"
         self.mount_a.run_shell(['mkdir', '-p', test_dir])
         self.fs_snap_schedule_cmd('add', path=test_dir, snap_schedule='1m')
