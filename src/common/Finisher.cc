@@ -32,7 +32,7 @@ void Finisher::wait_for_empty()
   while (!finisher_queue.empty() || finisher_running) {
     ldout(cct, 10) << "wait_for_empty waiting" << dendl;
     finisher_empty_wait = true;
-    finisher_empty_cond.wait(ul);
+    finisher_empty_cond.wait(ul, [this] { return finisher_queue.empty(); });
   }
   ldout(cct, 10) << "wait_for_empty empty" << dendl;
   finisher_empty_wait = false;
@@ -89,7 +89,7 @@ void *Finisher::finisher_thread_entry()
       break;
     
     ldout(cct, 10) << "finisher_thread sleeping" << dendl;
-    finisher_cond.wait(ul);
+    finisher_cond.wait(ul, [this] { return finisher_stop || !finisher_queue.empty(); });
   }
   // If we are exiting, we signal the thread waiting in stop(),
   // otherwise it would never unblock
