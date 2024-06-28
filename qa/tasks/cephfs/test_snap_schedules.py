@@ -676,10 +676,11 @@ class TestSnapSchedulesSubvolAndGroupArguments(TestSnapSchedulesHelper):
         self.fs_snap_schedule_cmd('add', '--subvol', 'sv01', path='.', snap_schedule='1m')
 
         self._verify_snap_schedule(self.CREATE_VERSION, 'sv01', None)
+        self.fs_snap_schedule_cmd('remove', '--subvol', 'sv01', path='.', snap_schedule='1m')
+
         path = self._get_subvol_snapdir_path(self.CREATE_VERSION, 'sv01', None)
         self.remove_snapshots(path, self.get_snap_dir_name())
 
-        self.fs_snap_schedule_cmd('remove', '--subvol', 'sv01', path='.', snap_schedule='1m')
         self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv01')
 
     def test_snap_schedule_subvol_and_group_arguments_02(self):
