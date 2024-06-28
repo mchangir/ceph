@@ -1028,6 +1028,7 @@ class LocalContext(object):
                           stdout=StringIO()).stdout.getvalue()
         from teuthology.run import get_summary
 
+        self.environment = 'vstart'
         cluster_name = 'ceph'
         self.archive = "./"
         self.config = {'cluster': cluster_name}
