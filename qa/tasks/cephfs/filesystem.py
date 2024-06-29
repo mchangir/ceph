@@ -19,7 +19,6 @@ from teuthology.parallel import parallel
 from teuthology import contextutil
 
 from tasks.ceph_manager import write_conf
-from tasks.ceph_manager import CephManager
 from tasks.ceph_test_case import RunCephCmd
 
 
@@ -245,6 +244,7 @@ class CephClusterBase(RunCephCmd):
             from tasks.vstart_runner import LocalCephManager
             manager = LocalCephManager(ctx=ctx)
         else:
+            from tasks.ceph_manager import CephManager
             manager = CephManager(self.admin_remote, ctx=ctx,
                                   logger=log.getChild('ceph_manager'))
         self.mon_manager = manager
