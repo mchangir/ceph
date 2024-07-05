@@ -14,6 +14,8 @@
 
 #include <string_view>
 
+#include <unistd.h>
+
 namespace ceph {
 namespace logging {
 
@@ -24,7 +26,7 @@ public:
   Entry() = delete;
   Entry(short pr, short sub) :
     m_stamp(clock().now()),
-    m_thread(pthread_self()),
+    m_thread(gettid()),
     m_prio(pr),
     m_subsys(sub)
   {}
