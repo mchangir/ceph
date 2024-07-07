@@ -59,8 +59,8 @@ class TestSnapSchedulesHelper(CephFSTestCase):
         # tolerate snapshot existance in the range [-5,+5]
         self.assertTrue((delta <= timo + 5) and (delta >= timo - 5))
 
-    def _fs_cmd(self, *args):
-        return self.get_ceph_cmd_stdout("fs", *args)
+    def _fs_cmd(self, *args, **kwargs):
+        return self.get_ceph_cmd_stdout("fs", *args, **kwargs)
 
     def fs_snap_schedule_cmd(self, *args, **kwargs):
         if 'fs' in kwargs:
@@ -76,7 +76,7 @@ class TestSnapSchedulesHelper(CephFSTestCase):
         return res
 
     def _create_or_reuse_test_volume(self):
-        result = json.loads(self._fs_cmd("volume", "ls"))
+        result = json.loads(self._fs_cmd("volume", "ls", timeout=900))
         if len(result) == 0:
             self.vol_created = True
             self.volname = TestSnapSchedulesHelper.TEST_VOLUME_NAME
