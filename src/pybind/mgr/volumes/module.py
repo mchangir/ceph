@@ -545,25 +545,28 @@ class Module(orchestrator.OrchestratorClientMixin, MgrModule):
         """
         with self.lock:
             for opt in self.MODULE_OPTIONS:
-                setattr(self,
-                        opt['name'],  # type: ignore
-                        self.get_module_option(opt['name']))  # type: ignore
-                self.log.debug(' mgr option %s = %s',
-                               opt['name'], getattr(self, opt['name']))  # type: ignore
-                if self.inited:
-                    if opt['name'] == "max_concurrent_clones":
-                        self.vc.cloner.reconfigure_max_concurrent_clones(self.max_concurrent_clones)
-                    elif opt['name'] == "snapshot_clone_delay":
-                        self.vc.cloner.reconfigure_snapshot_clone_delay(self.snapshot_clone_delay)
-                    elif opt['name'] == "periodic_async_work":
-                        if self.periodic_async_work:
-                            self.vc.cloner.set_wakeup_timeout()
-                            self.vc.purge_queue.set_wakeup_timeout()
-                        else:
-                            self.vc.cloner.unset_wakeup_timeout()
-                            self.vc.purge_queue.unset_wakeup_timeout()
-                    elif opt['name'] == "snapshot_clone_no_wait":
-                        self.vc.cloner.reconfigure_reject_clones(self.snapshot_clone_no_wait)
+                try:
+                    setattr(self,
+                            opt['name'],  # type: ignore
+                            self.get_module_option(opt['name']))  # type: ignore
+                    self.log.debug(' mgr option %s = %s',
+                                   opt['name'], getattr(self, opt['name']))  # type: ignore
+                    if self.inited:
+                        if opt['name'] == "max_concurrent_clones":
+                            self.vc.cloner.reconfigure_max_concurrent_clones(self.max_concurrent_clones)
+                        elif opt['name'] == "snapshot_clone_delay":
+                            self.vc.cloner.reconfigure_snapshot_clone_delay(self.snapshot_clone_delay)
+                        elif opt['name'] == "periodic_async_work":
+                            if self.periodic_async_work:
+                                self.vc.cloner.set_wakeup_timeout()
+                                self.vc.purge_queue.set_wakeup_timeout()
+                            else:
+                                self.vc.cloner.unset_wakeup_timeout()
+                                self.vc.purge_queue.unset_wakeup_timeout()
+                        elif opt['name'] == "snapshot_clone_no_wait":
+                            self.vc.cloner.reconfigure_reject_clones(self.snapshot_clone_no_wait)
+                except Exception as e:
+                    log.debug(f"Exception during volumes.config_notify: {e}")
 
     def handle_command(self, inbuf, cmd):
         handler_name = "_cmd_" + cmd['prefix'].replace(" ", "_")
