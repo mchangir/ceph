@@ -95,9 +95,10 @@ def lock_timeout_log(lock: Lock, timeout: int = 5) -> Iterator[None]:
     while True:
         logger.debug("locking {} with {} timeout".format(lock, timeout))
         if lock.acquire(timeout=timeout):
-            logger.debug("locked {}".format(lock))
+            logger.debug(f"Locked {lock}")
             yield
             lock.release()
+            logger.debug(f"Unlocked {lock}")
             break
         now = time.time()
         if not warned and now - start > WARN_AFTER:

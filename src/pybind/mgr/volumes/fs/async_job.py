@@ -37,6 +37,7 @@ class JobThread(threading.Thread):
             try:
                 # fetch next job to execute
                 with lock_timeout_log(self.async_job.lock):
+                    log.debug(f"JobThread({thread_name}).locked {self.async_job.lock}")
                     while True:
                         if self.should_reconfigure_num_threads():
                             log.info("thread [{0}] terminating due to reconfigure".format(thread_name))
@@ -52,9 +53,12 @@ class JobThread(threading.Thread):
                         vol_job = self.async_job.get_job()
                         if vol_job:
                             break
+                        log.debug(f"JobThread({thread_name}).unlocking for wait {self.async_job.lock}")
                         self.async_job.cv.wait(timeout=timo)
+                        log.debug(f"JobThread({thread_name}).locked after wait {self.async_job.lock}")
                     self.async_job.register_async_job(vol_job[0], vol_job[1], thread_id)
 
+                log.debug(f"JobThread({thread_name}).unlocked {self.async_job.lock}")
                 # execute the job (outside lock)
                 self.async_job.execute_job(vol_job[0], vol_job[1], should_cancel=lambda: thread_id.should_cancel())
                 retries = 0
@@ -72,13 +76,20 @@ class JobThread(threading.Thread):
             finally:
                 # when done, unregister the job
                 if vol_job:
+                    log.debug(f"JobThread({thread_name}).locking for unregister job {self.async_job.lock}")
                     with lock_timeout_log(self.async_job.lock):
+                        log.debug(f"JobThread({thread_name}).locked for unregister job {self.async_job.lock}")
                         self.async_job.unregister_async_job(vol_job[0], vol_job[1], thread_id)
+                    log.debug(f"JobThread({thread_name}).unlocked after unregister job {self.async_job.lock}")
+                log.debug(f"JobThread({thread_name}).finally sleeping {self.async_job.lock}")
                 time.sleep(1)
         log.error("thread [{0}] reached exception limit, bailing out...".format(thread_name))
         self.vc.cluster_log("thread {0} bailing out due to exception".format(thread_name))
+        log.debug(f"JobThread({thread_name}).locking for removing self {self.async_job.lock}")
         with lock_timeout_log(self.async_job.lock):
+            log.debug(f"JobThread({thread_name}).locked for removing self {self.async_job.lock}")
             self.async_job.threads.remove(self)
+        log.debug(f"JobThread({thread_name}).unlocked after removing self {self.async_job.lock}")
 
     def should_reconfigure_num_threads(self):
         # reconfigure of max_concurrent_clones
@@ -142,19 +153,20 @@ class AsyncJobs(threading.Thread):
         self.start()
 
     def set_wakeup_timeout(self):
-        with self.lock:
+        with lock_timeout_log(self.lock):
             # not made configurable on purpose
             self.wakeup_timeout = AsyncJobs.WAKEUP_TIMEOUT
             self.cv.notifyAll()
 
     def unset_wakeup_timeout(self):
-        with self.lock:
+        with lock_timeout_log(self.lock):
             self.wakeup_timeout = None
             self.cv.notifyAll()
 
     def run(self):
         log.debug("tick thread {} starting".format(self.name))
         with lock_timeout_log(self.lock):
+            log.debug(f"AsyncJobs({self.name}).locked {self.lock}")
             while not self.stopping.is_set():
                 c = len(self.threads)
                 if c > self.nr_concurrent_jobs:
@@ -167,7 +179,10 @@ class AsyncJobs(threading.Thread):
                     for i in range(c, self.nr_concurrent_jobs):
                         self.threads.append(JobThread(self, self.vc, name="{0}.{1}.{2}".format(self.name_pfx, time.time(), i)))
                         self.threads[-1].start()
+                log.debug(f"AsyncJobs({self.name}).unlocking for wait {self.lock}")
                 self.cv.wait(timeout=5)
+                log.debug(f"AsyncJobs({self.name}).locked after wait {self.lock}")
+        log.debug(f"AsyncJobs({self.name}).unlocked {self.lock}")
 
     def shutdown(self):
         self.stopping.set()
