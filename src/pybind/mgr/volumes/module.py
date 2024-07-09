@@ -557,12 +557,14 @@ class Module(orchestrator.OrchestratorClientMixin, MgrModule):
                         elif opt['name'] == "snapshot_clone_delay":
                             self.vc.cloner.reconfigure_snapshot_clone_delay(self.snapshot_clone_delay)
                         elif opt['name'] == "periodic_async_work":
+                            log.debug(f"setting {opt['name']} to {getattr(self, opt['name'])}")
                             if self.periodic_async_work:
                                 self.vc.cloner.set_wakeup_timeout()
                                 self.vc.purge_queue.set_wakeup_timeout()
                             else:
                                 self.vc.cloner.unset_wakeup_timeout()
                                 self.vc.purge_queue.unset_wakeup_timeout()
+                            log.debug(f"done setting {opt['name']} to {getattr(self, opt['name'])}")
                         elif opt['name'] == "snapshot_clone_no_wait":
                             self.vc.cloner.reconfigure_reject_clones(self.snapshot_clone_no_wait)
                 except Exception as e:
