@@ -76,7 +76,7 @@ class TestSnapSchedulesHelper(CephFSTestCase):
         return res
 
     def _create_or_reuse_test_volume(self):
-        result = json.loads(self._fs_cmd("volume", "ls", timeout=900))
+        result = json.loads(self._fs_cmd("volume", "ls"))
         if len(result) == 0:
             self.vol_created = True
             self.volname = TestSnapSchedulesHelper.TEST_VOLUME_NAME

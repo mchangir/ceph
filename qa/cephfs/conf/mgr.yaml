@@ -5,3 +5,6 @@ overrides:
         debug client: 20
         debug mgr: 20
         debug ms: 1
+        client mount timeout: 30
+    log-ignorelist:
+      - cluster \[WRN\] evicting unresponsive client
