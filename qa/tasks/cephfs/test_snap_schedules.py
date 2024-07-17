@@ -760,6 +760,7 @@ class TestSnapSchedulesSubvolAndGroupArguments(TestSnapSchedulesHelper):
 
         path = self._get_subvol_snapdir_path(self.CREATE_VERSION, 'sv06', 'mygrp06')
         self.remove_snapshots(path, self.get_snap_dir_name())
+
         self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv06', '--group_name', 'mygrp06')
         self._fs_cmd('subvolumegroup', 'rm', 'cephfs', 'mygrp06')
 
@@ -793,8 +794,6 @@ class TestSnapSchedulesSubvolAndGroupArguments(TestSnapSchedulesHelper):
         path = self._get_subvol_snapdir_path(self.CREATE_VERSION, 'sv08', 'mygrp08')
         self.remove_snapshots(path, self.get_snap_dir_name())
 
-        path = self._get_subvol_snapdir_path(self.CREATE_VERSION, 'sv08', 'mygrp08')
-        self.remove_snapshots(path, self.get_snap_dir_name())
         self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv08', '--group_name', 'mygrp08')
         self._fs_cmd('subvolumegroup', 'rm', 'cephfs', 'mygrp08')
 
@@ -845,8 +844,6 @@ class TestSnapSchedulesSubvolAndGroupArguments(TestSnapSchedulesHelper):
         path = self._get_subvol_snapdir_path(self.CREATE_VERSION, 'sv11', 'mygrp11')
         self.remove_snapshots(path, self.get_snap_dir_name())
 
-        path = self._get_subvol_snapdir_path(self.CREATE_VERSION, 'sv11', 'mygrp11')
-        self.remove_snapshots(path, self.get_snap_dir_name())
         self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv11', '--group_name', 'mygrp11')
         self._fs_cmd('subvolumegroup', 'rm', 'cephfs', 'mygrp11')
 
@@ -865,8 +862,6 @@ class TestSnapSchedulesSubvolAndGroupArguments(TestSnapSchedulesHelper):
         path = self._get_subvol_snapdir_path(self.CREATE_VERSION, 'sv12', 'mygrp12')
         self.remove_snapshots(path, self.get_snap_dir_name())
 
-        path = self._get_subvol_snapdir_path(self.CREATE_VERSION, 'sv12', 'mygrp12')
-        self.remove_snapshots(path, self.get_snap_dir_name())
         self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv12', '--group_name', 'mygrp12')
         self._fs_cmd('subvolumegroup', 'rm', 'cephfs', 'mygrp12')
 
@@ -1023,8 +1018,6 @@ class TestSnapSchedulesSubvolAndGroupArguments(TestSnapSchedulesHelper):
         path = self._get_subvol_snapdir_path(self.CREATE_VERSION, 'sv20', 'mygrp20')
         self.remove_snapshots(path, self.get_snap_dir_name())
 
-        path = self._get_subvol_snapdir_path(self.CREATE_VERSION, 'sv20', 'mygrp20')
-        self.remove_snapshots(path, self.get_snap_dir_name())
         self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv20', '--group_name', 'mygrp20')
         self._fs_cmd('subvolumegroup', 'rm', 'cephfs', 'mygrp20')
 
@@ -1086,8 +1079,6 @@ class TestSnapSchedulesSubvolAndGroupArguments(TestSnapSchedulesHelper):
         path = self._get_subvol_snapdir_path(self.CREATE_VERSION, 'sv23', 'mygrp23')
         self.remove_snapshots(path, self.get_snap_dir_name())
 
-        path = self._get_subvol_snapdir_path(self.CREATE_VERSION, 'sv23', 'mygrp23')
-        self.remove_snapshots(path, self.get_snap_dir_name())
         self._fs_cmd('subvolume', 'rm', 'cephfs', 'sv23', '--group_name', 'mygrp23')
         self._fs_cmd('subvolumegroup', 'rm', 'cephfs', 'mygrp23')
 
