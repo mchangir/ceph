@@ -167,6 +167,9 @@ class CephfsConnectionPool(object):
             self.fs.conf_set("client_quota", "false")
             logger.debug("CephFS initializing...")
             self.fs.init()
+            # smaller mount timeout to fail fast and quicker retries in case of
+            # volume deletes and renames
+            self.fs.set_mount_timeout(30)
             logger.debug("CephFS mounting...")
             self.fs.mount(filesystem_name=self.fs_name.encode('utf-8'))
             logger.debug("Connection to cephfs '{0}' complete".format(self.fs_name))
