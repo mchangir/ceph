@@ -1111,6 +1111,7 @@ class TestSnapSchedulesFetchForeignConfig(TestSnapSchedulesHelper):
         snap_path = f"{dir_path}/{sdn}"
         snapshots = self.mount_a.ls(path=snap_path)
         fs_count = len(snapshots)
+        log.debug(f"fs_count:{fs_count} ... expected 9")
 
         self.assertTrue(fs_count == 9)
 
@@ -1118,9 +1119,9 @@ class TestSnapSchedulesFetchForeignConfig(TestSnapSchedulesHelper):
 
         time.sleep(1*60 + 10)  # wait for max_snaps_per_dir limit to be breached
 
-        snap_path = f"{dir_path}/{sdn}"
         snapshots = self.mount_a.ls(path=snap_path)
         fs_count = len(snapshots)
+        log.debug(f"fs_count:{fs_count} ... expected 7")
 
         self.assertTrue(fs_count == 7)
 
@@ -1128,9 +1129,9 @@ class TestSnapSchedulesFetchForeignConfig(TestSnapSchedulesHelper):
 
         time.sleep(2*60 + 10)  # wait for more snaps to be created
 
-        snap_path = f"{dir_path}/{sdn}"
         snapshots = self.mount_a.ls(path=snap_path)
         fs_count = len(snapshots)
+        log.debug(f"fs_count:{fs_count} ... expected 9")
 
         self.assertTrue(fs_count == 9)
 
