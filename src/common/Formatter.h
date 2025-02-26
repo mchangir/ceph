@@ -157,6 +157,8 @@ namespace ceph {
     void dump_format_va(std::string_view name, const char *ns, bool quoted, const char *fmt, va_list ap) override;
     int get_len() const override;
     void write_raw_data(const char *data) override;
+    template <class T>
+    void add_value(std::string_view name, T val);
 
   protected:
     virtual bool handle_value(std::string_view name, std::string_view s, bool quoted) {
@@ -188,8 +190,6 @@ namespace ceph {
     void print_comma(json_formatter_stack_entry_d& entry);
     void finish_pending_string();
 
-    template <class T>
-    void add_value(std::string_view name, T val);
     void add_value(std::string_view name, std::string_view val, bool quoted);
 
     copyable_sstream m_ss;
