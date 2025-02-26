@@ -173,7 +173,7 @@ RUN echo "gdisk hostname procps-ng sg3_utils e2fsprogs lvm2 gcc" >> packages.txt
 RUN echo "python3-scikit-learn" >> packages.txt
 
 # ceph-node-proxy
-RUN echo "ceph-node-proxy" >> packages.txt
+# RUN echo "ceph-node-proxy" >> packages.txt
 
 RUN echo "=== PACKAGES TO BE INSTALLED ==="; cat packages.txt
 RUN echo "=== INSTALLING ===" ; \
