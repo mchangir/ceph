@@ -55,12 +55,12 @@ OSD_FLAVOR=${OSD_FLAVOR}
 RUN dnf install -y --setopt=install_weak_deps=False epel-release jq
 
 # Add NFS-Ganesha repo
-RUN \
-    echo "[ganesha]" > /etc/yum.repos.d/ganesha.repo && \
-    echo "name=ganesha" >> /etc/yum.repos.d/ganesha.repo && \
-    echo "baseurl=${GANESHA_REPO_BASEURL}" >> /etc/yum.repos.d/ganesha.repo && \
-    echo "gpgcheck=0" >> /etc/yum.repos.d/ganesha.repo && \
-    echo "enabled=1" >> /etc/yum.repos.d/ganesha.repo
+# RUN \
+#     echo "[ganesha]" > /etc/yum.repos.d/ganesha.repo && \
+#     echo "name=ganesha" >> /etc/yum.repos.d/ganesha.repo && \
+#     echo "baseurl=${GANESHA_REPO_BASEURL}" >> /etc/yum.repos.d/ganesha.repo && \
+#     echo "gpgcheck=0" >> /etc/yum.repos.d/ganesha.repo && \
+#     echo "enabled=1" >> /etc/yum.repos.d/ganesha.repo
 
 # ISCSI repo
 RUN set -ex && \
@@ -112,7 +112,6 @@ RUN echo "ca-certificates" > packages.txt
 #       ref: https://github.com/ceph/ceph/pull/54575#discussion_r1401199635
 RUN echo \
 "ceph-common \
-ceph-exporter \
 ceph-grafana-dashboards \
 ceph-immutable-object-cache \
 ceph-mds \
@@ -141,15 +140,15 @@ fi
 # Ceph "Recommends"
 RUN echo "nvme-cli python3-saml smartmontools" >> packages.txt
 # NFS-Ganesha
-RUN echo "\
-dbus-daemon \
-nfs-ganesha-ceph \
-nfs-ganesha-rados-grace \
-nfs-ganesha-rados-urls \
-nfs-ganesha-rgw \
-nfs-ganesha \
-rpcbind \
-sssd-client" >> packages.txt
+# RUN echo "\
+# dbus-daemon \
+# nfs-ganesha-ceph \
+# nfs-ganesha-rados-grace \
+# nfs-ganesha-rados-urls \
+# nfs-ganesha-rgw \
+# nfs-ganesha \
+# rpcbind \
+# sssd-client" >> packages.txt
 
 # ISCSI
 RUN echo "ceph-iscsi tcmu-runner python3-rtslib" >> packages.txt
@@ -180,7 +179,7 @@ RUN echo "=== INSTALLING ===" ; \
 dnf install -y --setopt=install_weak_deps=False --setopt=skip_missing_names_on_install=False --enablerepo=crb $(cat packages.txt)
 
 # XXX why isn't this done in the ganesha package?
-RUN mkdir -p /var/run/ganesha
+# RUN mkdir -p /var/run/ganesha
 
 # Disable sync with udev since the container can not contact udev
 RUN \
