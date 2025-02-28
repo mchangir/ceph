@@ -1425,8 +1425,8 @@ done
 %endif
 
 export CPPFLAGS="$java_inc"
-export CFLAGS="$RPM_OPT_FLAGS"
-export CXXFLAGS="$RPM_OPT_FLAGS"
+export CFLAGS="$(echo $RPM_OPT_FLAGS | sed -e 's/-DALLOCATOR=tcmalloc//g')"
+export CXXFLAGS="$(echo $RPM_OPT_FLAGS | sed -e 's/-DALLOCATOR=tcmalloc//g')"
 export LDFLAGS="$RPM_LD_FLAGS"
 
 %if 0%{with seastar}
@@ -1485,7 +1485,7 @@ cmake .. \
     -DWITH_LTTNG:BOOL=OFF \
     -DWITH_BABELTRACE:BOOL=OFF \
 %endif
-    $CEPH_EXTRA_CMAKE_ARGS \
+    $(echo $CEPH_EXTRA_CMAKE_ARGS | sed -e 's/-DALLOCATOR=tcmalloc/-DALLOCATOR=libc/g') \
 %if 0%{with ocf}
     -DWITH_OCF:BOOL=ON \
 %endif
