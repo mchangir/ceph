@@ -3117,6 +3117,12 @@ void MDSRankDispatcher::handle_asok_command(
      dout(10) << "dump_stray wait" << dendl;
     }
     return;
+  } else if (command == "quarantine enable") {
+    command_quarantine_dir(cmdmap, std::move(on_finish), QUARANTINE_ADD);
+    return;
+  } else if (command == "quarantine disable") {
+    command_quarantine_dir(cmdmap, std::move(on_finish), QUARANTINE_DEL);
+    return;
   } else {
     r = -ENOSYS;
   }

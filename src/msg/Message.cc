@@ -129,6 +129,7 @@
 #include "messages/MClientSnap.h"
 #include "messages/MClientQuota.h"
 #include "messages/MClientMetrics.h"
+#include "messages/MQuarantineDisable.h"
 
 #include "messages/MMDSPeerRequest.h"
 #include "messages/MMDSQuiesceDbListing.h"
@@ -719,6 +720,10 @@ Message *decode_message(CephContext *cct,
     break;
   case CEPH_MSG_CLIENT_METRICS:
     m = make_message<MClientMetrics>();
+    break;
+
+  case CEPH_MSG_CLIENT_QUARANTINE_DISABLE:
+    m = make_message<MQuarantineDisable>();
     break;
 
     // mds

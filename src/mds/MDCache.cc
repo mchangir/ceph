@@ -47,6 +47,8 @@
 
 #include "Mutation.h"
 
+#include "QuarantineManager.h"
+
 #include "include/ceph_fs.h"
 #include "include/filepath.h"
 #include "include/util.h"
@@ -62,6 +64,7 @@
 #include "messages/MDiscover.h"
 #include "messages/MDiscoverReply.h"
 #include "messages/MGatherCaps.h"
+#include "messages/MQuarantineDisable.h"
 #include "messages/MMDSCacheRejoin.h"
 #include "messages/MMDSFindIno.h"
 #include "messages/MMDSFindInoReply.h"
@@ -73,6 +76,8 @@
 #include "messages/MMDSResolve.h"
 #include "messages/MMDSResolveAck.h"
 #include "messages/MMDSSnapUpdate.h"
+#include "messages/MMDSQuarantine.h"
+#include "messages/MMDSQuarantineReply.h"
 
 #include "msg/Message.h"
 #include "msg/Messenger.h"
@@ -97,6 +102,9 @@
 #include "events/ECommitted.h"
 #include "events/EPurged.h"
 #include "events/ESessions.h"
+#include "events/EQuarantineStart.h"
+#include "events/EQuarantineFinish.h"
+#include "events/EQuarantineCancel.h"
 
 #include "InoTable.h"
 #include "fscrypt.h"
@@ -133,6 +141,15 @@ static ostream& _prefix(std::ostream *_dout, MDSRank *mds) {
 
 set<int> SimpleLock::empty_gather_set;
 
+
+struct QuarantineWorkCtx {
+  QuarantineWorkCtx(elist<CInode*>::iterator it, ceph::mono_clock::time_point started)
+    : it(it), started(started) {
+  }
+
+  elist<CInode*>::iterator it;
+  const ceph::mono_clock::time_point started;
+};
 
 /**
  * All non-I/O contexts that require a reference
@@ -184,7 +201,10 @@ MDCache::MDCache(MDSRank *m, PurgeQueue &purge_queue_) :
   trim_counter(g_conf().get_val<double>("mds_cache_trim_decay_rate")),
   quiesce_counter(g_conf().get_val<double>("mds_cache_quiesce_decay_rate")),
   quiesce_threshold(g_conf().get_val<Option::size_t>("mds_cache_quiesce_threshold")),
-  quiesce_sleep(g_conf().get_val<std::chrono::milliseconds>("mds_cache_quiesce_sleep"))
+  quiesce_sleep(g_conf().get_val<std::chrono::milliseconds>("mds_cache_quiesce_sleep")),
+  qtine_inflight_ops(g_conf().get_val<Option::size_t>("mds_max_inflight_qtine_ops")),
+  qtine_sleep(g_conf().get_val<std::chrono::milliseconds>("mds_cache_qtine_sleep")),
+  qtine_timeout(g_conf().get_val<std::chrono::seconds>("mds_qtine_timeout"))
 {
   migrator.reset(new Migrator(mds, this));
 
@@ -272,6 +292,15 @@ void MDCache::handle_conf_change(const std::set<std::string>& changed, const MDS
   }
   if (changed.count("mds_cache_quiesce_sleep")) {
     quiesce_sleep = g_conf().get_val<std::chrono::milliseconds>("mds_cache_quiesce_sleep");
+  }
+  if (changed.count("mds_cache_qtine_sleep")) {
+    qtine_sleep = g_conf().get_val<std::chrono::milliseconds>("mds_cache_qtine_sleep");
+  }
+  if (changed.count("mds_max_inflight_qtine_ops")) {
+    qtine_inflight_ops = g_conf().get_val<uint64_t>("mds_max_inflight_qtine_ops");
+  }
+  if (changed.count("mds_qtine_timeout")) {
+    qtine_timeout = g_conf().get_val<std::chrono::seconds>("mds_qtine_timeout");
   }
   if (changed.count("mds_cache_trim_decay_rate")) {
     trim_counter = DecayCounter(g_conf().get_val<double>("mds_cache_trim_decay_rate"));
@@ -8487,6 +8516,14 @@ void MDCache::dispatch(const cref_t<Message> &m)
   case MSG_MDS_SNAPUPDATE:
     handle_snap_update(ref_cast<MMDSSnapUpdate>(m));
     break;
+
+  case MSG_MDS_QUARANTINEDIR:
+    handle_quarantinedir_replica(ref_cast<MMDSQuarantine>(m));
+    break;
+    
+  case MSG_MDS_QUARANTINEDIR_REPLY:
+    handle_quarantinedir_reply(ref_cast<MMDSQuarantineReply>(m));
+    break;
     
   default:
     derr << "cache unknown message " << m->get_type() << dendl;
@@ -9212,8 +9249,8 @@ void MDCache::_open_ino_backtrace_fetched(inodeno_t ino, bufferlist& bl, int err
     try {
       decode(backtrace, bl);
     } catch (const buffer::error &decode_exc) {
-      derr << "corrupt backtrace on ino x0" << std::hex << ino
-           << std::dec << ": " << decode_exc.what() << dendl;
+      derr << "corrupt backtrace on ino x0" << ino
+           << ": " << decode_exc.what() << dendl;
       open_ino_finish(ino, info, -EIO);
       return;
     }
@@ -9963,6 +10000,10 @@ MDRequestRef MDCache::request_start_internal(int op)
     case CEPH_MDS_OP_QUIESCE_PATH:
     case CEPH_MDS_OP_QUIESCE_INODE:
     case CEPH_MDS_OP_LOCK_PATH:
+    case CEPH_MDS_OP_QUARANTINEDIR_AUTH:
+    case CEPH_MDS_OP_QUARANTINEDIR_REPLICA:
+    case CEPH_MDS_OP_QUARANTINE_INODE:
+    case CEPH_MDS_OP_QUARANTINEDIR_WORK:
       params.continuous = true;
       break;
     default:
@@ -10119,6 +10160,18 @@ void MDCache::dispatch_request(const MDRequestRef& mdr)
     case CEPH_MDS_OP_UNINLINE_DATA:
       uninline_data_work(mdr);
       break;
+    case CEPH_MDS_OP_QUARANTINEDIR_AUTH:
+      quarantine_dir_auth(mdr);
+      break;
+    case CEPH_MDS_OP_QUARANTINEDIR_REPLICA:
+      quarantine_dir_replica(mdr);
+      break;
+    case CEPH_MDS_OP_QUARANTINE_INODE:
+      quarantine_inode(mdr);
+      break;
+    case CEPH_MDS_OP_QUARANTINEDIR_WORK:
+      quarantine_work(mdr);
+      break;
     default:
       ceph_abort();
     }
@@ -10172,6 +10225,12 @@ void MDCache::request_cleanup(const MDRequestRef& mdr)
     case CEPH_MDS_OP_LOCK_PATH: {
       auto* lpp = static_cast<LockPathState*>(mdr->internal_op_private);
       delete lpp;
+      mdr->internal_op_private = nullptr;
+      break;
+    }
+    case CEPH_MDS_OP_QUARANTINEDIR_WORK: {
+      auto *qtine_ctx = static_cast<QuarantineWorkCtx*>(mdr->internal_op_private);
+      delete qtine_ctx;
       mdr->internal_op_private = nullptr;
       break;
     }
@@ -14990,4 +15049,467 @@ void MDCache::aggregate_snap_sets(const std::vector<std::unique_ptr<SnapSetConte
     block_diff->blocks = extents;
   }
   on_finish->complete(r);
+}
+
+class C_MDC_quarantine_inode : public MDCacheContext {
+  MDRequestRef mdr;
+  QtineMgrRef qtine_mgr;
+  inodeno_t qtine_root_ino;
+  unsigned qtine_op;
+
+  public:
+  C_MDC_quarantine_inode(MDCache *mdc, const MDRequestRef& mdr,
+                               QtineMgrRef qtine_mgr, inodeno_t ino, unsigned op) :
+    MDCacheContext(mdc),
+    mdr(mdr),
+    qtine_mgr(qtine_mgr),
+    qtine_root_ino(ino),
+    qtine_op(op) { }
+
+  void finish(int r) {
+    auto mds = get_mds(); // to keep dout happy
+
+    if (!r) {
+      dout(20) << __func__ << " quarantine has passed for inode " << qtine_root_ino << dendl;
+      if (mdcache->get_inode(qtine_root_ino)->is_auth()) {
+        dout(20) << __func__ << " logging EQuarantineFinish for inode " << qtine_root_ino << dendl;
+        // FIXME Maybe we want to send a MMDSQuarantineComplete message to the 
+        // replicas so that the replicas drop the CInode::quarantine_in_progress
+        // flag at the subvol root inode ... assuming that the quarantine flag
+        // from the optmetadata has been replicated by the migrator as soon as
+        // the inode projection has been popped after the journaling the event
+        mdcache->log_qtine_event(new EQuarantineFinish(), qtine_root_ino, qtine_op);
+      }
+    } else {
+      dout(20) << __func__ << " quarantine has failed for inode " << qtine_root_ino <<  ": " << cpp_strerror(r) << dendl;
+      if (mdcache->get_inode(qtine_root_ino)->is_auth()) {
+        dout(20) << __func__ << " logging EQuarantineCancel for inode " << qtine_root_ino << dendl;
+        mdcache->log_qtine_event(new EQuarantineCancel(), qtine_root_ino, qtine_op);
+      }
+      qtine_mgr->notify_completion(mds->get_nodeid(), r);
+    }
+    mdcache->get_inode(qtine_root_ino)->clear_being_quarantined();
+    dout(20) << __PRETTY_FUNCTION__ << " PUT" << dendl;
+    qtine_mgr->put();
+    mdcache->mds->unregister_quarantine_mgr(qtine_root_ino);
+  }
+};
+
+void MDCache::handle_quarantinedir_reply(const cref_t<MMDSQuarantineReply>& m)
+{
+  dout(20) << __func__ << " received reply for inode: " << m->qtine_root_ino << dendl;
+  std::lock_guard lck(mds->mds_lock);
+  auto qtine_mgr = mds->get_quarantine_mgr(m->qtine_root_ino);
+  if (qtine_mgr) {
+    dout(20) << __func__ << " declaring quarantine finished for mds: " << m->get_source().num() << dendl;
+    qtine_mgr->mds_quarantine_finished(m->get_source().num());
+  }
+}
+
+void MDCache::quarantine_dir_replica(const MDRequestRef& mdr)
+{
+  CInode *in = get_inode(mdr->get_filepath().get_ino());
+  if (!in) {
+    dout(20) << __func__ << " could not locate inode:" << mdr->get_filepath().get_ino() << dendl;
+    mds->server->respond_to_request(mdr, -ENOENT);
+    mdr->qtine_mgr->notify_completion(mds->get_nodeid(), -ENOENT);
+    dout(20) << __PRETTY_FUNCTION__ << " PUT" << dendl;
+    mdr->qtine_mgr->put();
+    mdr->qtine_mgr = nullptr;
+    return;
+  }
+
+  MutationImpl::LockOpVec lov;
+  if (!mds->server->xlock_policylock(mdr, in, false, true, std::move(lov)))
+    return;
+
+  mdr->pin(in);
+  in->set_being_quarantined(mdr->qtine_op);
+
+  auto qtine_mgr = mds->get_quarantine_mgr(mdr->qtine_root_ino);
+  dout(20) << __PRETTY_FUNCTION__ << " GET" << dendl;
+  qtine_mgr->get();
+
+  mds->locker->drop_locks(mdr.get());
+  start_quarantine_inode_work(in, mdr->qtine_op, qtine_mgr);
+
+  // in->clear_being_quarantined();
+  // dout(20) << __PRETTY_FUNCTION__ << " PUT" << dendl;
+  // qtine_mgr->put();
+  // mds->unregister_quarantine_mgr(in->ino());
+  mdr->unpin(in);
+  mds->server->respond_to_request(mdr, 0);
+}
+
+// entry point function parallel to the CLI command handler on the auth
+void MDCache::handle_quarantinedir_replica(const cref_t<MMDSQuarantine> &m)
+{
+  mds_rank_t from = mds_rank_t(m->get_source().num());
+  dout(10) << __func__ << " " << *m << " from mds." << from << dendl;
+
+  if (!mds->is_active()) {
+    return;
+  }
+
+  CInode *in = get_inode(m->qtine_root_ino);
+
+  if (!in) {
+    dout(20) << __func__ << " inode " << m->qtine_root_ino << " is not in cache; dropping request" << dendl;
+    auto msg = make_message<MMDSQuarantineReply>(m->qtine_root_ino, 0);
+    mds->send_message_mds(msg, m->get_source().num());
+    return;
+  }
+
+  MDRequestRef mdr = request_start_internal(CEPH_MDS_OP_QUARANTINEDIR_REPLICA);
+  mdr->set_filepath(filepath(in->ino()));
+  mdr->internal_op_finish = new LambdaContext([](int r){});
+  mdr->no_early_reply = true;
+  mdr->qtine_root_ino = m->qtine_root_ino;
+  mds->register_quarantine_mgr(m->qtine_root_ino, std::make_shared<QuarantineManager>());
+  auto qtine_mgr = mds->get_quarantine_mgr(m->qtine_root_ino);
+  dout(20) << __PRETTY_FUNCTION__ << " GET" << dendl;
+  qtine_mgr->get();
+  qtine_mgr->register_rank_finisher(
+    mds->get_nodeid(),
+    new LambdaContext([this, in, m](int r) {
+      auto msg = make_message<MMDSQuarantineReply>(in->ino(), r);
+      mds->send_message_mds(msg, m->get_source().num());
+      }));
+
+  std::lock_guard lck(mds->mds_lock);
+  dispatch_request(mdr);
+}
+
+template <typename T>
+void MDCache::send_qtine_message_replicas(CInode *qtine_root_in, unsigned qtine_op, bool mark_quarantine_started)
+{
+  auto qtine_mgr = mds->get_quarantine_mgr(qtine_root_in->ino());
+  std::set<mds_rank_t> witnesses;
+
+  qtine_root_in->list_replicas(witnesses);
+  for (auto rank: witnesses) {
+    if (rank != mds->get_nodeid()) {
+      dout(20) << __func__ << " starting quarantine on rank " << rank
+               << dendl;
+      auto msg = make_message<T>(qtine_root_in->ino(), qtine_op);
+      mds->send_message_mds(msg, rank);
+      if (mark_quarantine_started) {
+        qtine_mgr->mds_quarantine_started(rank);
+      }
+    } else {
+      dout(20) << __func__ << " skipping quarantine on rank " << rank
+               << "; because this is my rank"
+               << dendl;
+    }
+  }
+}
+
+void MDCache::log_qtine_event(QuarantineEvent *le, inodeno_t ino, unsigned op)
+{
+  MDRequestRef mdr_dummy;
+  le->set_subvol_ino(ino);
+  le->set_qtine_op(op);
+  mds->server->submit_mdlog_entry(le, nullptr, mdr_dummy, __func__);
+}
+
+void MDCache::start_quarantine_inode_work(CInode *qtine_root_in, unsigned qtine_op, QtineMgrRef qtine_mgr)
+{
+  // this request will queue quarantine_inode requests and throttle
+  // spawning requests as per the max_inflight_requests parameter
+  MDRequestRef mdr = request_start_internal(CEPH_MDS_OP_QUARANTINEDIR_WORK);
+  mdr->internal_op_finish = new C_MDC_quarantine_inode(this, mdr, qtine_mgr, qtine_root_in->ino(), qtine_op);
+  auto& inodes_with_caps = qtine_root_in->snaprealm->inodes_with_caps;
+  mdr->internal_op_private = new QuarantineWorkCtx(inodes_with_caps.begin(), mono_clock::now());
+  mdr->no_early_reply = true;
+  mdr->qtine_op = qtine_op;
+  mdr->qtine_root_ino = qtine_root_in->ino();
+  dout(20) << __PRETTY_FUNCTION__ << " GET" << dendl;
+  qtine_mgr->get();
+  mds->finisher->queue(new LambdaContext([this, mdr=mdr](int r) {
+    std::lock_guard lck(mds->mds_lock);
+    dispatch_request(mdr);
+  }));
+}
+
+void MDCache::quarantine_work(const MDRequestRef& mdr)
+{
+  dout(20) << __func__ << dendl;
+
+  int oserrno = 0;
+  auto qtine_mgr = mds->get_quarantine_mgr(mdr->qtine_root_ino);
+  auto qtine_ctx = *static_cast<QuarantineWorkCtx*>(mdr->internal_op_private);
+  auto qtine_sleep = this->qtine_sleep * 5;
+
+  if (mdr->qtine_op == QUARANTINE_ADD) {
+    dout(20) << __func__ << " QUARANTINE_ADD" << dendl;
+    uint64_t inodes_started = qtine_mgr->get_inodes_started(mds->get_nodeid());
+    uint64_t inodes_finished = qtine_mgr->get_inodes_finished(mds->get_nodeid());
+    while (!qtine_ctx.it.end() && (inodes_started - inodes_finished < qtine_inflight_ops)) {
+      dout(20) << __func__ << " " << qtine_ctx.started << ", " << mono_clock::now() << " processing inode " << *qtine_ctx.it << dendl;
+      if (start_revoke_caps_for_inode(*qtine_ctx.it, mdr->qtine_root_ino, mdr->qtine_op)) {
+        ++inodes_started;
+      }
+      ++qtine_ctx.it;
+    }
+
+    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(mono_clock::now() - qtine_ctx.started);
+    if (elapsed < qtine_timeout) {
+      if (inodes_started - inodes_finished >= qtine_inflight_ops) {
+        mds->timer.add_event_after(qtine_sleep, new C_MDS_RetryRequest(this, mdr));
+        return;
+      }
+    }
+    dout(20) << __func__ << " declaring quarantine finished for mds: " << mds->get_nodeid() << dendl;
+    // marking mds quarantine completed maybe premature
+    // but we declare it anyway since there's no way to tell which of the
+    // subvol inodes is indeed the last inode to acquire locks for quarantine
+    qtine_mgr->mds_quarantine_finished(mds->get_nodeid());
+    mdr->qtine_op = QUARANTINE_NONE;
+    mds->timer.add_event_after(qtine_sleep, new C_MDS_RetryRequest(this, mdr));
+    return;
+  } else if (mdr->qtine_op == QUARANTINE_DEL) {
+    dout(20) << __func__ << " QUARANTINE_DEL" << dendl;
+    auto qtine_root_in = get_inode(mdr->qtine_root_ino);
+    ceph_assert(qtine_root_in);
+
+    while (!qtine_ctx.it.end()) {
+      start_revoke_caps_for_inode(*qtine_ctx.it, mdr->qtine_root_ino, mdr->qtine_op);
+      ++qtine_ctx.it;
+    }
+    dout(20) << __func__ << " declaring quarantine finished for mds: " << mds->get_nodeid() << dendl;
+    // marking mds quarantine completed maybe premature
+    // but we declare it anyway since there's no way to tell which of the
+    // subvol inodes is indeed the last inode to acquire locks for quarantine
+    qtine_mgr->mds_quarantine_finished(mds->get_nodeid());
+    mdr->qtine_op = QUARANTINE_NONE;
+    mds->timer.add_event_after(qtine_sleep, new C_MDS_RetryRequest(this, mdr));
+    return;
+  } else { // QUARANTINE_NONE
+    dout(20) << __func__ << " QUARANTINE_NONE" << dendl;
+    // we completed starting jobs so we just monitor the timeout
+    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(mono_clock::now() - qtine_ctx.started);
+    if (elapsed >= qtine_timeout) {
+      qtine_mgr->set_cancelled();
+      oserrno = -ETIMEDOUT;
+    } else if (!qtine_mgr->is_quarantine_completed()) {
+      mds->timer.add_event_after(qtine_sleep, new C_MDS_RetryRequest(this, mdr));
+      return;
+    }
+  }
+  mds->server->respond_to_request(mdr, oserrno);
+}
+
+void MDCache::quarantine_dir_auth(const MDRequestRef& mdr)
+{
+  dout(20) << __func__ << dendl;
+  ceph_assert(mdr->qtine_op == QUARANTINE_ADD ||
+              mdr->qtine_op == QUARANTINE_DEL);
+
+  CInode *in = mds->server->rdlock_path_pin_ref(mdr,  mdr->get_filepath(), true, false);
+
+  if (!in) {
+    dout(20) << __func__ << " no inode for path:" << mdr->get_filepath() << dendl;
+    mdr->qtine_mgr->notify_completion(mds->get_nodeid(), -ENOENT);
+    mdr->qtine_mgr = nullptr;
+    mds->server->respond_to_request(mdr, -ENOENT);
+    return;
+  }
+
+  if (!in->is_auth()) {
+    dout(20) << __func__ << " inode is not auth; giving up" << dendl;
+    mdr->qtine_mgr->notify_completion(mds->get_nodeid(), -EAGAIN);
+    mdr->qtine_mgr = nullptr;
+    mds->server->respond_to_request(mdr, -EAGAIN);
+    return;
+  }
+
+  mdr->qtine_root_ino = in->ino();
+
+  auto realm = in->find_snaprealm();
+  if (!realm) {
+    dout(20) << __func__ << " no snaprealm found" << dendl;
+    mdr->qtine_mgr->notify_completion(mds->get_nodeid(), -EINVAL);
+    mdr->qtine_mgr = nullptr;
+    mds->server->respond_to_request(mdr, -EINVAL);
+    return;
+  }
+  inodeno_t subvol_ino = realm->get_subvolume_ino();
+  if (!subvol_ino || subvol_ino != in->ino()) {
+    // the current inode is not a snaprealm, so we bail out
+    dout(20) << __func__ << " inode:" << in->ino() << " is not a subvol:" << subvol_ino << "; giving up" << dendl;
+    mdr->qtine_mgr->notify_completion(mds->get_nodeid(), -EINVAL);
+    mdr->qtine_mgr = nullptr;
+    mds->server->respond_to_request(mdr, -EINVAL);
+    return;
+  }
+
+  if ((mdr->qtine_op == QUARANTINE_ADD && in->is_quarantined()) ||
+      (mdr->qtine_op == QUARANTINE_DEL && !in->is_quarantined())) {
+    dout(20) << __func__
+             << " quarantine on inode:" << in->ino() << std::dec
+             << " is already "
+             << (mdr->qtine_op == QUARANTINE_ADD ? "enabled" : "disabled")
+             << dendl;
+    mdr->qtine_mgr->notify_completion(mds->get_nodeid(), 0);
+    mdr->qtine_mgr = nullptr;
+    mds->server->respond_to_request(mdr, 0);
+    return;
+  }
+
+  dout(20) << __func__ << " registering qtine_mgr with mds" << dendl;
+  if (mds->register_quarantine_mgr(in->ino(), mdr->qtine_mgr)) {
+    mdr->qtine_mgr = nullptr;
+    auto qtine_mgr = mds->get_quarantine_mgr(in->ino());
+    dout(20) << __PRETTY_FUNCTION__ << " GET" << dendl;
+    qtine_mgr->get(); // released in quarantine_work (case QUARANTINE_NONE)
+    qtine_mgr->mds_quarantine_started(mds->get_nodeid());
+  }
+
+  dout(20) << __func__ << " logging EQuarantineStart for inode " << in->ino() << dendl;
+  log_qtine_event(new EQuarantineStart(), in->ino(), mdr->qtine_op);
+
+  // this flag helps revoke caps until the actual quarantine flag in the 
+  // optmetadata is set/cleared
+  in->set_being_quarantined(mdr->qtine_op);
+
+  // only successful completion reply expected
+  // no reply expected on timeout
+  dout(20) << __func__ << " starting quarantine on replicas" << dendl;
+  send_qtine_message_replicas<MMDSQuarantine>(in, mdr->qtine_op, true);
+
+  auto qtine_mgr = mds->get_quarantine_mgr(in->ino());
+
+  // NEW METHOD
+  mds->locker->drop_locks(mdr.get());
+  start_quarantine_inode_work(in, mdr->qtine_op, qtine_mgr);
+
+  dout(20) << __PRETTY_FUNCTION__ << " PUT 1" << dendl;
+  qtine_mgr->put();
+  mds->unregister_quarantine_mgr(mdr->qtine_root_ino);
+
+  mds->server->respond_to_request(mdr, 0);
+}
+
+void MDCache::quarantine_inode(MDRequestRef const& mdr)
+{
+  auto qtine_mgr = mds->get_quarantine_mgr(mdr->qtine_root_ino);
+  if (qtine_mgr->is_cancelled()) {
+    qtine_mgr->notify_completion(mds->get_nodeid(), -ETIMEDOUT);
+    dout(20) << __PRETTY_FUNCTION__ << " PUT 1" << dendl;
+    qtine_mgr->put();
+    mds->unregister_quarantine_mgr(mdr->qtine_root_ino);
+    mds->server->respond_to_request(mdr, 0);
+    return;
+  }
+
+  CInode *in = get_inode(mdr->get_filepath().get_ino());
+  if (!in) {
+    dout(20) << __func__ << " no such inode " << mdr->get_filepath().get_ino() << dendl;
+    qtine_mgr->notify_completion(mds->get_nodeid(), -ENOENT);
+    dout(20) << __PRETTY_FUNCTION__ << " PUT 2" << dendl;
+    qtine_mgr->put();
+    mds->unregister_quarantine_mgr(mdr->qtine_root_ino);
+    mds->server->respond_to_request(mdr, -ENOENT);
+    return;
+  }
+
+  mdr->pin(in);
+
+  MutationImpl::LockOpVec lov;
+  lov.add_xlock(&in->authlock);
+  lov.add_xlock(&in->linklock);
+  lov.add_xlock(&in->xattrlock);
+  lov.add_xlock(&in->filelock);
+  if (in->snaprealm && in->snaprealm->get_subvolume_ino() == in->ino()) {
+    lov.add_xlock(&in->snaplock);
+    lov.add_xlock(&in->policylock);
+  }
+
+  dout(20) << __func__ << " acquiring locks for inode " << *in << dendl;
+  if (!mds->locker->acquire_locks(mdr, lov, nullptr, false, true)) {
+    return;
+  }
+  dout(20) << __func__ << " locks acquired for inode " << *in << dendl;
+  if (in->ino() == mdr->qtine_root_ino) {
+    auto pi = in->project_inode(mdr);
+    auto *pip = pi.inode.get();
+
+    if (mdr->qtine_op == QUARANTINE_ADD) {
+      pip->set_quarantine();
+    } else if (mdr->qtine_op == QUARANTINE_DEL) {
+      pip->del_quarantine();
+    } else {
+      ceph_assert(nullptr); // qtine_op is corrupt ?
+    }
+
+    if (in->is_auth()) {
+      pip->change_attr++;
+      pip->ctime = ceph_clock_now();
+      if (pip->ctime > pip->rstat.rctime)
+        pip->rstat.rctime = pip->ctime;
+      pip->version = in->pre_dirty();
+
+      // C_MDS_inode_update_finish invokes a server->respond_to_request()
+      // hence avoiding it here
+      // dout(20) << __PRETTY_FUNCTION__ << " GET" << dendl;
+      // qtine_mgr->get();
+      mds->server->journal_quarantine_inode(mdr, in, mdr->qtine_op, qtine_mgr);
+
+      // qtine_mgr unref'ed in C_MDS_quarantine_inode_update_finish::finish()
+    } else {
+      // we don't journal the mutation on the replicas
+      in->pop_and_apply_projected_inode(mdr);
+
+      qtine_mgr->inode_quarantine_finished(mds->get_nodeid());
+      dout(20) << __PRETTY_FUNCTION__ << " PUT 3" << dendl;
+      qtine_mgr->put();
+      mds->unregister_quarantine_mgr(mdr->qtine_root_ino);
+    }
+  } else {
+    qtine_mgr->inode_quarantine_finished(mds->get_nodeid());
+    dout(20) << __PRETTY_FUNCTION__ << " PUT 4" << dendl;
+    qtine_mgr->put();
+    mds->unregister_quarantine_mgr(mdr->qtine_root_ino);
+  }
+  dout(20) << __func__ << " finished quarantine for inode " << *in << dendl;
+  mdr->unpin(in);
+  if (in->ino() != mdr->qtine_root_ino) {
+    mds->server->respond_to_request(mdr, 0);
+  }
+}
+
+// we need the user to specify the subvolume dir and not the uuid dir
+// here we just weed out the .meta* file
+bool MDCache::start_revoke_caps_for_inode(CInode *in, inodeno_t qtine_root_ino, unsigned qtine_op)
+{
+  auto name = in->get_projected_parent_dn()->get_name();
+  if (name == ".meta") {
+    return false;
+  }
+
+  MDRequestRef mdr = request_start_internal(CEPH_MDS_OP_QUARANTINE_INODE);
+  mdr->set_filepath(filepath(in->ino()));
+  mdr->internal_op_finish = new LambdaContext([this, in=in, qtine_op=qtine_op](int r) {
+    if (qtine_op == QUARANTINE_DEL) {
+      for (auto& [client, cap] : in->get_client_caps()) {
+        auto msg = make_message<MQuarantineDisable>();
+        msg->ino = in->ino();
+        mds->send_message_client_counted(msg, cap.get_session());
+      }
+    }
+  });
+  mdr->qtine_op = qtine_op;
+  mdr->qtine_root_ino = qtine_root_ino;
+  mdr->no_early_reply = true;
+  dout(20) << __func__ << " queuing quarantine request for inode " << *in << dendl;
+  auto qtine_mgr = mds->get_quarantine_mgr(mdr->qtine_root_ino);
+  dout(20) << __PRETTY_FUNCTION__ << " GET" << dendl;
+  qtine_mgr->get();
+  qtine_mgr->inode_quarantine_started(mds->get_nodeid());
+  mds->finisher->queue(new LambdaContext([cache=this, mds=mds, mdr=mdr](int r) {
+        std::lock_guard lck(mds->mds_lock);
+        dout(20) << __func__ << " started quarantine for inode " << mdr->get_filepath().get_ino() << dendl;
+        cache->dispatch_request(mdr);
+        }), 0);
+  return true;
 }

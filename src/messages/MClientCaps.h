@@ -23,7 +23,7 @@
 class MClientCaps final : public SafeMessage {
 private:
 
-  static constexpr int HEAD_VERSION = 13;
+  static constexpr int HEAD_VERSION = 14;
   static constexpr int COMPAT_VERSION = 1;
 
  public:
@@ -64,6 +64,8 @@ private:
   std::vector<uint8_t> fscrypt_file;
   uint64_t subvolume_id = 0;
 
+  int oserrno = 0;
+
   int      get_caps() const { return head.caps; }
   int      get_wanted() const { return head.wanted; }
   int      get_dirty() const { return head.dirty; }
@@ -92,6 +94,8 @@ private:
   const file_layout_t& get_layout() const {
     return layout;
   }
+
+  int get_errno() const { return this->oserrno; }
 
   void set_layout(const file_layout_t &l) {
     layout = l;
@@ -131,6 +135,8 @@ private:
   ceph_tid_t get_oldest_flush_tid() const { return oldest_flush_tid; }
 
   void clear_dirty() { head.dirty = 0; }
+
+  void set_errno(int e) { this->oserrno = e; }
 
 protected:
   MClientCaps()
@@ -287,6 +293,9 @@ public:
     if (header.version >= 13) {
           decode(subvolume_id, p);
     }
+    if (header.version >= 14) {
+      decode(this->oserrno, p);
+    }
   }
   void encode_payload(uint64_t features) override {
     using ceph::encode;
@@ -358,6 +367,7 @@ public:
     encode(fscrypt_auth, payload);
     encode(fscrypt_file, payload);
     encode(subvolume_id, payload);
+    encode(this->oserrno, payload);
   }
 private:
   template<class T, typename... Args>

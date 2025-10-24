@@ -75,6 +75,7 @@ class MClientReclaimReply;
 class MLock;
 class MMDSPeerRequest;
 class filepath;
+class QuarantineManager;
 
 template<template<typename> class Allocator> struct inode_t;
 using mempool_inode = inode_t<mempool::mds_co::pool_allocator>;
@@ -82,6 +83,7 @@ using inode_const_ptr = std::shared_ptr<const mempool_inode>;
 using mempool_xattr_map = xattr_map<mempool::mds_co::pool_allocator>; // FIXME bufferptr not in mempool
 using xattr_map_ptr = std::shared_ptr<mempool_xattr_map>;
 using xattr_map_const_ptr = std::shared_ptr<const mempool_xattr_map>;
+using QtineMgr = std::shared_ptr<QuarantineManager>;
 
 enum {
   l_mdss_first = 1000,
@@ -394,6 +396,9 @@ public:
 
   const bufferlist& get_snap_trace(Session *session, SnapRealm *realm) const;
   const bufferlist& get_snap_trace(client_t client, SnapRealm *realm) const;
+
+  // quarantine
+  void journal_quarantine_inode(MDRequestRef const& mdr, CInode *cur, unsigned qtine_op, QtineMgr qtine_mgr);
 
 private:
   friend class MDSContinuation;
