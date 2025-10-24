@@ -5859,6 +5859,24 @@ bool CInode::is_quiesced() const {
   return mdr->internal_op == CEPH_MDS_OP_QUIESCE_INODE;
 }
 
+bool CInode::is_quarantined() const { 
+  return get_inode()->is_quarantined();
+}
+
+bool CInode::is_under_quarantine(inodeno_t _subvol_ino) const {
+  ceph_assert(snaprealm);
+  inodeno_t subvol_ino = snaprealm->get_subvolume_ino();
+  if (subvol_ino != _subvol_ino) {
+    return false;
+  }
+  auto *in = mdcache->get_inode(subvol_ino);
+  if (!in) {
+    return false;
+  }
+
+  return in->is_quarantined();
+}
+
 bool CInode::will_block_for_quiesce(const MDRequestRef& mdr) {
   if (mdr && mdr->is_wrlocked(&quiescelock)) {
     return false;

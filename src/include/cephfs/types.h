@@ -485,14 +485,46 @@ private:
 };
 
 template<template<typename> class Allocator>
+class quarantine_md_t {
+public:
+  static constexpr int STRUCT_V = 1;
+  static constexpr int COMPAT_V = 1;
+
+  quarantine_md_t() = default;
+
+  void encode(ceph::buffer::list& bl, uint64_t features) const {
+    ENCODE_START(STRUCT_V, COMPAT_V, bl);
+    ceph::encode(flag, bl);
+    ENCODE_FINISH(bl);
+  }
+  void decode(ceph::buffer::list::const_iterator& p) {
+    DECODE_START(STRUCT_V, p);
+    ceph::decode(flag, p);
+    DECODE_FINISH(p);
+  }
+
+  void print(std::ostream& os) const {
+    os << "quarantine_md_t(flag=" << flag << ")";
+  }
+  void dump(ceph::Formatter* f) const;
+
+private:
+  bool flag = true; // value of flag is moot
+                    // presence of this metadata is enough to declare dir as
+                    // quarantined
+};
+
+template<template<typename> class Allocator>
 struct optmetadata_server_t {
   using opts = std::variant<
     unknown_md_t<Allocator>,
-    charmap_md_t<Allocator>
+    charmap_md_t<Allocator>,
+    quarantine_md_t<Allocator>
   >;
   enum kind_t : uint64_t {
     UNKNOWN,
     CHARMAP,
+    QUARANTINE,
     _MAX
   };
 };
@@ -501,11 +533,13 @@ template<template<typename> class Allocator>
 struct optmetadata_client_t {
   using opts = std::variant<
     unknown_md_t<Allocator>,
-    charmap_md_t<Allocator>
+    charmap_md_t<Allocator>,
+    quarantine_md_t<Allocator>
   >;
   enum kind_t : uint64_t {
     UNKNOWN,
     CHARMAP,
+    QUARANTINE,
     _MAX
   };
 };
@@ -816,6 +850,19 @@ struct inode_t {
   }
   void del_charmap() {
     optmetadata.del_opt(optmetadata_singleton_server_t::kind_t::CHARMAP);
+  }
+
+  bool is_quarantined() const {
+    return optmetadata.has_opt(optmetadata_singleton_server_t::kind_t::QUARANTINE);
+  }
+
+  auto& set_quarantine() {
+    auto& opt = optmetadata.get_or_create_opt(optmetadata_singleton_server_t::kind_t::QUARANTINE);
+    return opt.template get_meta< quarantine_md_t >();
+  }
+
+  void del_quarantine() {
+    optmetadata.del_opt(optmetadata_singleton_server_t::kind_t::QUARANTINE);
   }
 
   const std::vector<uint64_t>& get_referent_inodes() { return referent_inodes; }

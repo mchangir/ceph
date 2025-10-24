@@ -683,6 +683,8 @@ class CInode : public MDSCacheObject, public InodeStoreBase, public Counter<CIno
   bool is_symlink() const { return get_inode()->is_symlink(); }
   bool is_dir() const     { return get_inode()->is_dir(); }
   bool is_quiesced() const;
+  bool is_quarantined() const;
+  bool is_under_quarantine(inodeno_t _subvol_ino) const;
   bool will_block_for_quiesce(const MDRequestRef& mdr);
 
   bool is_head() const { return last == CEPH_NOSNAP; }
