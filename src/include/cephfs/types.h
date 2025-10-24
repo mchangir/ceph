@@ -1272,4 +1272,9 @@ inline void decode(inode_t<Allocator> &c, ::ceph::buffer::list::const_iterator &
   c.decode(p);
 }
 
+enum {
+  QUARANTINE_NONE = 0,
+  QUARANTINE_ADD  = 1,
+  QUARANTINE_DEL  = 2
+};
 #endif
