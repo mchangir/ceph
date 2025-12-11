@@ -3489,7 +3489,8 @@ bool Server::check_access(const MDRequestRef& mdr, CInode *in, unsigned mask)
       mdr->client_request->get_caller_gid(),
       &mdr->client_request->get_caller_gid_list(),
       mdr->client_request->head.args.setattr.uid,
-      mdr->client_request->head.args.setattr.gid);
+      mdr->client_request->head.args.setattr.gid,
+      in->is_under_quarantine());
     if (r < 0) {
       respond_to_request(mdr, r);
       return false;
