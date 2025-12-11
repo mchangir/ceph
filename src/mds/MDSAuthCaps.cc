@@ -74,7 +74,8 @@ struct MDSCapParser : qi::grammar<Iterator, MDSAuthCaps()>
     root_squash %= -(spaces >> lit("root_squash") >> attr(true));
     match = (fs_name >> path >> root_squash >> uid >> gidlist)[_val = phoenix::construct<MDSCapMatch>(_1, _2, _3, _4, _5)];
 
-    // capspec = * | r[w][f][p][s]
+    // capspec = * | r[w][f][p][q][Q][s]
+#if 0
     capspec = spaces >> (
         lit("*")[_val = MDSCapSpec(MDSCapSpec::ALL)]
         |
@@ -98,6 +99,23 @@ struct MDSCapParser : qi::grammar<Iterator, MDSAuthCaps()>
         |
         (lit("r"))[_val = MDSCapSpec(MDSCapSpec::READ)]
         );
+#endif
+    capspec = spaces >> (
+        lit("*")[qi::_a = MDSCapSpec::ALL]
+        |
+        lit("all")[qi::_a = MDSCapSpec::ALL]
+        |
+        (
+         lit('r')[qi::_a = MDSCapSpec::READ] >>
+         (-lit('w')[qi::_a |= MDSCapSpec::WRITE] >>
+          -lit('f')[qi::_a |= MDSCapSpec::FULL] >>
+          -lit('p')[qi::_a |= MDSCapSpec::SET_VXATTR] >>
+          -lit('Q')[qi::_a |= MDSCapSpec::Q_PRIME] >>
+          -lit('q')[qi::_a |= MDSCapSpec::Q] >>
+          -lit('s')[qi::_a |= MDSCapSpec::SNAPSHOT]
+         )
+        )
+      )[_val = qi::_a];
 
     grant = lit("allow") >> (capspec >> match >>
 			     -(spaces >> lit("network") >> spaces >> network_str))
@@ -109,7 +127,7 @@ struct MDSCapParser : qi::grammar<Iterator, MDSAuthCaps()>
   qi::rule<Iterator, string()> quoted_path, unquoted_path, network_str;
   qi::rule<Iterator, string()> fs_name_str, fs_name, path;
   qi::rule<Iterator, bool()> root_squash;
-  qi::rule<Iterator, MDSCapSpec()> capspec;
+  qi::rule<Iterator, MDSCapSpec(), qi::locals<unsigned>> capspec;
   qi::rule<Iterator, uint32_t()> uid;
   qi::rule<Iterator, vector<uint32_t>() > uintlist;
   qi::rule<Iterator, vector<uint32_t>() > gidlist;
@@ -236,7 +254,8 @@ bool MDSAuthCaps::is_capable(string_view fs_name,
 			     unsigned mask,
 			     uid_t new_uid, gid_t new_gid,
 			     const entity_addr_t& addr,
-			     string_view trimmed_inode_path) const
+			     string_view trimmed_inode_path,
+                             bool check_quarantine_access) const
 {
   ldout(g_ceph_context, 10) << __func__ << " fs_name " << fs_name
 		 << " inode(path /" << trimmed_inode_path
@@ -259,6 +278,11 @@ bool MDSAuthCaps::is_capable(string_view fs_name,
 
     if (grant.match.match(fs_name, inode_path, caller_uid, caller_gid, caller_gid_list) &&
 	grant.spec.allows(mask & (MAY_READ|MAY_EXECUTE), mask & MAY_WRITE)) {
+      if (check_quarantine_access &&
+          !grant.spec.allow_qtine_access() &&
+          !grant.spec.allow_qtine_prime_access()) {
+        return false;
+      }
       if (grant.match.root_squash && ((caller_uid == 0) || (caller_gid == 0)) &&
           (mask & MAY_WRITE)) {
 	    continue;
@@ -276,7 +300,6 @@ bool MDSAuthCaps::is_capable(string_view fs_name,
 	std::sort(gids.begin(), gids.end());
       }
       
-
       // Spec is non-allowing if caller asked for set pool but spec forbids it
       if (mask & MAY_SET_VXATTR) {
         if (!grant.spec.allow_set_vxattr()) {
@@ -298,6 +321,11 @@ bool MDSAuthCaps::is_capable(string_view fs_name,
 
       // check unix permissions?
       if (grant.match.uid == MDSCapMatch::MDS_AUTH_UID_ANY) {
+        if (check_quarantine_access &&
+            !grant.spec.allow_qtine_access() &&
+            !grant.spec.allow_qtine_prime_access()) {
+          return false;
+        }
         return true;
       }
 
@@ -321,6 +349,11 @@ bool MDSAuthCaps::is_capable(string_view fs_name,
         if ((!(mask & MAY_READ) || (inode_mode & S_IRUSR)) &&
 	    (!(mask & MAY_WRITE) || (inode_mode & S_IWUSR)) &&
 	    (!(mask & MAY_EXECUTE) || (inode_mode & S_IXUSR))) {
+          if (check_quarantine_access &&
+              !grant.spec.allow_qtine_access() &&
+              !grant.spec.allow_qtine_prime_access()) {
+            return false;
+          }
           return true;
         }
       } else if (std::find(gids.begin(), gids.end(),
@@ -328,12 +361,22 @@ bool MDSAuthCaps::is_capable(string_view fs_name,
         if ((!(mask & MAY_READ) || (inode_mode & S_IRGRP)) &&
 	    (!(mask & MAY_WRITE) || (inode_mode & S_IWGRP)) &&
 	    (!(mask & MAY_EXECUTE) || (inode_mode & S_IXGRP))) {
+          if (check_quarantine_access &&
+              !grant.spec.allow_qtine_access() &&
+              !grant.spec.allow_qtine_prime_access()) {
+            return false;
+          }
           return true;
         }
       } else {
         if ((!(mask & MAY_READ) || (inode_mode & S_IROTH)) &&
 	    (!(mask & MAY_WRITE) || (inode_mode & S_IWOTH)) &&
 	    (!(mask & MAY_EXECUTE) || (inode_mode & S_IXOTH))) {
+          if (check_quarantine_access &&
+              !grant.spec.allow_qtine_access() &&
+              !grant.spec.allow_qtine_prime_access()) {
+            return false;
+          }
           return true;
         }
       }
@@ -495,6 +538,8 @@ string MDSCapSpec::to_string()
     if (allow_write()) { str +="w"; }
     if (allow_full()) { str +="f"; }
     if (allow_set_vxattr()) { str +="p"; }
+    if (allow_qtine_prime_access()) { str +="Q"; }
+    if (allow_qtine_access()) { str +="q"; }
     if (allow_snapshot()) { str +="s"; }
   }
 
@@ -576,6 +621,12 @@ ostream &operator<<(ostream &out, const MDSCapSpec &spec)
     }
     if (spec.allow_set_vxattr()) {
       out << "p";
+    }
+    if (spec.allow_qtine_prime_access()) {
+      out << "Q";
+    }
+    if (spec.allow_qtine_access()) {
+      out << "q";
     }
     if (spec.allow_snapshot()) {
       out << "s";
