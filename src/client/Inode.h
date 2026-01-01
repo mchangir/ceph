@@ -170,6 +170,8 @@ struct Inode : RefCountedObject {
   decltype(InodeStat::optmetadata) optmetadata;
   using optkind_t = decltype(InodeStat::optmetadata)::optkind_t;
 
+  int qtine_errno = 0;
+
   bool is_fscrypt_enabled() {
     return !!fscrypt_auth.size();
   }
@@ -250,6 +252,11 @@ struct Inode : RefCountedObject {
   std::list<ceph::condition_variable*> waitfor_deleg;
 
   Dentry *get_first_parent() {
+    ceph_assert(!dentries.empty());
+    return *dentries.begin();
+  }
+
+  const Dentry *get_first_parent() const {
     ceph_assert(!dentries.empty());
     return *dentries.begin();
   }
@@ -344,7 +351,13 @@ struct Inode : RefCountedObject {
     auto& opt = optmetadata.get_opt(optkind_t::CHARMAP);
     return opt.template get_meta< charmap_md_t >();
   }
-
+  void set_quarantine() {
+    optmetadata.get_or_create_opt(optkind_t::QUARANTINE);
+  }
+  void del_quarantine() {
+    optmetadata.del_opt(optkind_t::QUARANTINE);
+  }
+  bool is_under_quarantine() const;
   void break_all_delegs() { break_deleg(false); };
 
   void recall_deleg(bool skip_read);

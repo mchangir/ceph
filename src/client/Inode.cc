@@ -846,3 +846,15 @@ void Inode::mark_caps_clean()
 }
 
 
+bool Inode::is_under_quarantine() const
+{
+  const Inode *in = this;
+  while (in) {
+    if (in->qtine_errno == -EQUARANTINED ||
+        in->optmetadata.has_opt(optkind_t::QUARANTINE)) {
+      return true;
+    }
+    in = (!in->dentries.empty() ? in->get_first_parent()->dir->parent_inode : nullptr);
+  }
+  return false;
+}

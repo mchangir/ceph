@@ -79,6 +79,7 @@ class WritebackHandler;
 
 class MDSMap;
 class Message;
+class MQuarantineDisable;
 class destructive_lock_ref_t;
 
 enum {
@@ -831,6 +832,7 @@ public:
   void maybe_update_snaprealm(SnapRealm *realm, snapid_t snap_created, snapid_t snap_highwater,
 			      std::vector<snapid_t>& snaps);
 
+  void handle_quarantine_disable(const MConstRef<MQuarantineDisable>& m);
   void handle_quota(const MConstRef<MClientQuota>& m);
   void handle_snap(const MConstRef<MClientSnap>& m);
   void handle_caps(const MConstRef<MClientCaps>& m);
@@ -1258,6 +1260,9 @@ protected:
    */
   void _finish_init();
 
+  void load_auth_caps();
+  bool has_qtine_auth_caps(const std::string_view path);
+
   // global client lock
   //  - protects Client and buffer cache both!
   ceph::mutex client_lock = ceph::make_mutex("Client::client_lock");
@@ -1280,6 +1285,9 @@ protected:
   Objecter  *objecter;
 
   client_t whoami;
+
+  MDSAuthCaps mds_auth_caps; // for qtine auth caps
+  bool has_mds_auth_caps = false;
 
   /* The state migration mechanism */
   enum _state {
@@ -2062,6 +2070,7 @@ private:
   bool respect_subvolume_snapshot_visibility;
 
   std::locale m_locale;
+
 };
 
 /**
