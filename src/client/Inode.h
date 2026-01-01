@@ -170,6 +170,8 @@ struct Inode : RefCountedObject {
   decltype(InodeStat::optmetadata) optmetadata;
   using optkind_t = decltype(InodeStat::optmetadata)::optkind_t;
 
+  int qtine_errno = 0;
+
   bool is_fscrypt_enabled() {
     return !!fscrypt_auth.size();
   }
@@ -343,6 +345,9 @@ struct Inode : RefCountedObject {
   auto& get_charmap() const {
     auto& opt = optmetadata.get_opt(optkind_t::CHARMAP);
     return opt.template get_meta< charmap_md_t >();
+  }
+  bool is_quarantined() const {
+    return optmetadata.has_opt(optkind_t::QUARANTINE);
   }
 
   void break_all_delegs() { break_deleg(false); };
